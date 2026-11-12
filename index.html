@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>啵啵奶茶铺</title>
+<meta name="description" content="可爱的 3D 奶茶店模拟经营：泡茶、煮珍珠、做奶茶、赚钱升级你的小店。">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="啵啵奶茶铺">
+<meta name="theme-color" content="#ffd9e2">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="labels"></div>
+<div id="fx"></div>
+
+<div id="hud" hidden>
+  <div id="top">
+    <div id="stat">
+      <div class="pill">💰 <b id="coins">0</b></div>
+      <div class="pill grow"><span id="daytxt"></span><i class="tbar"><u id="tprog"></u></i></div>
+      <div class="pill">⭐ <b id="rep"></b></div>
+    </div>
+    <div id="xp"><span id="lvtxt"></span><i><u id="xpfill"></u></i><span id="combo"></span></div>
+    <div id="orders"></div>
+  </div>
+  <div id="bottom">
+    <button id="open">🔔 开门营业</button>
+    <div id="hint"></div>
+    <div id="held"></div>
+    <div id="actions"></div>
+    <nav id="tabs">
+      <button data-sheet="shop">🛒<small>进货</small><em id="lowbadge"></em></button>
+      <button data-sheet="up">⬆️<small>升级</small></button>
+      <button data-sheet="menu">📖<small>配方</small></button>
+      <button data-sheet="tasks">🎯<small>目标</small><em id="goalbadge"></em></button>
+      <button data-sheet="set">⚙️<small>设置</small></button>
+    </nav>
+  </div>
+</div>
+
+<div id="joy"><i></i></div>
+<div id="toasts"></div>
+<div id="sheetwrap" hidden><div id="sheet"><div id="grab"></div><div id="sheetbody"></div></div></div>
+
+<div id="title">
+  <div class="tcard">
+    <div class="logo">🧋</div>
+    <h1>啵啵奶茶铺</h1>
+    <p>泡茶 · 煮珍珠 · 摇出一家梦想小店</p>
+    <button id="start">开始营业</button>
+    <small id="tip">拖动屏幕任意位置走动 · 靠近设备点按钮操作</small>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

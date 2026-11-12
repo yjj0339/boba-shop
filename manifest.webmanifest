@@ -1,0 +1,18 @@
+{
+  "name": "啵啵奶茶铺",
+  "short_name": "啵啵奶茶铺",
+  "description": "可爱的 3D 奶茶店模拟经营：泡茶、煮珍珠、做奶茶、赚钱升级你的小店。",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffe6ec",
+  "theme_color": "#ffd9e2",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
