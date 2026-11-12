@@ -1,11 +1,11 @@
 // 界面：HUD、3D 锚定标签、面板
 import { S, R, G, hooks } from './game.js';
-import { ING, RECIPES, SHOP, UPGRADES, DECOR, THEMES, ACHS, SEQ, SHOPS, BRANCHES, SCENES, RSTAR } from './data.js';
+import { ING, RECIPES, SHOP, UPGRADES, DECOR, THEMES, ACHS, SEQ, SHOPS, BRANCHES, SCENES, RSTAR, PALS, PAL_HEART, SKILLS } from './data.js';
 import { L } from './world.js';
 import { setMusic, audio, sfx } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
-let W, curActions = [], actHtml = '', sheetName = null, sheetTab = 'shop', sheetData = null, lastSlow = 0;
+let W, curActions = [], actHtml = '', sheetName = null, sheetTab = 'shop', taskTab = 'goal', sheetData = null, lastSlow = 0, shown = -1, skHtml = '';
 const tags = [], bubs = new Map(), bars = [null, null, null];
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
 const chip = (id, ok) => `<span class="ic${ok ? ' ok' : ''}">${ING[id].emo}<small>${ING[id].name}</small></span>`;
@@ -30,6 +30,10 @@ export function initUI(w) {
     a.fn();
   });
   $('tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { sfx('pop'); openSheet(b.dataset.sheet); } });
+  $('orders').addEventListener('pointerdown', (e) => { const c = e.target.closest('.oc[data-i]'); if (c) { e.preventDefault(); G.pinOrder(+c.dataset.i); } });
+  $('skills').addEventListener('pointerdown', (e) => { const b = e.target.closest('button'); if (b) { e.preventDefault(); G.skill(b.dataset.k); } });
+  hooks.fever = (on) => { document.body.classList.toggle('fever', !!on); audio.tempo = on ? 1.18 : 1; };
+  hooks.coin = coinFly;
   $('open').addEventListener('click', () => G.openDoor());
   $('sheetwrap').addEventListener('click', (e) => {
     if (e.target === $('sheetwrap')) { if (sheetName !== 'summary') closeSheet(); return; }
@@ -40,7 +44,10 @@ export function initUI(w) {
     else if (a === 'up') G.upgrade(x);
     else if (a === 'decor') G.buyDecor(x);
     else if (a === 'theme') G.setTheme(x);
-    else if (a === 'scene') G.setScene(x);
+    else if (a === 'scene') { const was = S.scene; G.setScene(x); if (S.scene !== was && R.tour > 0) return closeSheet(); }
+    else if (a === 'restock') G.restock();
+    else if (a === 'tour') { R.tour = 8; return closeSheet(); }
+    else if (a === 'ttab') { taskTab = x; sfx('pop'); }
     else if (a === 'branch') G.buyBranch(x);
     else if (a === 'rec') G.upRecipe(x);
     else if (a === 'expand') { const was = S.shop; G.expand(); if (S.shop !== was) return closeSheet(); }
@@ -74,18 +81,43 @@ function confetti(n = 34) {
   }
 }
 
-function celebrate({ emo, title, sub, big }) {
+// q: 排队依次播放（不会互相顶掉）；quiet: 不撒彩带
+let cBusy = 0, cTimer = 0; const cq = [];
+function celebrate(o) {
+  const now = performance.now();
+  if (o.q && now < cBusy) { if (o.quiet) for (let i = cq.length - 1; i >= 0; i--) if (cq[i].quiet) cq.splice(i, 1); if (cq.length < 5) cq.push(o); return; }
+  const { emo, title, sub, big, quiet } = o, dur = big ? 3200 : 2300;
   document.querySelectorAll('.celebrate').forEach((e) => e.remove());
-  const el = document.createElement('div'); el.className = 'celebrate' + (big ? ' big' : '');
+  const el = document.createElement('div'); el.className = 'celebrate' + (big ? ' big' : '') + (quiet ? ' quiet' : '');
   el.innerHTML = `<i class="rays"></i><div class="cbox"><span>${emo}</span><b>${title}</b><small>${sub || ''}</small></div>`;
-  document.body.appendChild(el); confetti(big ? 60 : 30);
+  document.body.appendChild(el); if (!quiet) confetti(big ? 60 : 30);
   if (big) { const f = document.createElement('div'); f.className = 'flash'; document.body.appendChild(f); setTimeout(() => f.remove(), 900); }
-  setTimeout(() => el.remove(), big ? 3200 : 2300);
+  cBusy = now + dur - 250; clearTimeout(cTimer);
+  cTimer = setTimeout(() => { el.remove(); cBusy = 0; const n = cq.shift(); if (n) celebrate(n); }, dur - 250);
+}
+// 金币从顾客头顶飞进左上角的钱包
+function coinFly(pos, amount) {
+  const [x, y, ok] = W.project(pos[0], pos[1], pos[2]); if (!ok || !document.body.animate) return;
+  const r = $('coins').getBoundingClientRect(), tx = r.left + 4, ty = r.top + 2, n = Math.min(7, 2 + Math.floor(Math.log10(Math.max(1, amount)) * 1.6));
+  for (let i = 0; i < n; i++) {
+    const el = document.createElement('i'); el.className = 'coinfly'; document.body.appendChild(el);
+    const sx = x + (Math.random() - 0.5) * 46, sy = y + (Math.random() - 0.5) * 30;
+    const an = el.animate([
+      { transform: `translate(${x}px,${y}px) scale(.3)`, opacity: 0 },
+      { transform: `translate(${sx}px,${sy - 26}px) scale(1.15)`, opacity: 1, offset: 0.25 },
+      { transform: `translate(${tx}px,${ty}px) scale(.55)`, opacity: 1 },
+    ], { duration: 620 + i * 70, easing: 'cubic-bezier(.45,0,.3,1)' });
+    an.onfinish = () => { el.remove(); const p = $('coins').parentNode; p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump'); };
+  }
 }
 
 // ---------- HUD ----------
 function renderHud() {
-  $('coins').textContent = fmt(S.coins); $('rep').textContent = S.rep.toFixed(1);
+  $('rep').textContent = S.rep.toFixed(1);
+  const live = R.phase === 'open' || R.phase === 'closing';
+  $('frow').hidden = !live;
+  const sk = live ? SKILLS.filter((s) => S.level >= s.lv).map((s) => `<button data-k="${s.id}" title="${s.name}"><span>${s.emo}</span><em></em></button>`).join('') : '';
+  if (sk !== skHtml) { skHtml = sk; $('skills').innerHTML = sk; }
   $('lvtxt').textContent = `Lv.${S.level} ${G.rank()}`; $('xpfill').style.width = Math.min(100, S.xp / G.xpNeed() * 100) + '%';
   $('combo').textContent = R.combo >= 2 ? `🔥${R.combo}连击` : '';
   $('open').hidden = R.phase !== 'prep';
@@ -93,12 +125,13 @@ function renderHud() {
   const gl = R.goals.filter((g) => !g.done).length; $('goalbadge').textContent = R.phase === 'prep' && gl ? gl : '';
   // 订单卡
   const h = R.hint || {}, cup = R.held;
-  const ns = R.slots.length; $('orders').style.gridTemplateColumns = `repeat(${ns}, 1fr)`; $('orders').className = ns > 3 ? 'n4' : '';
+  const ns = R.slots.length; $('orders').style.gridTemplateColumns = `repeat(${ns}, 1fr)`; $('orders').className = ns > 4 ? 'n4 n5' : ns > 3 ? 'n4' : '';
   $('orders').innerHTML = R.phase === 'prep' || R.phase === 'summary' ? '' : R.slots.map((c, i) => {
     if (!c || c.state !== 'order') return `<div class="oc empty">等待客人</div>`;
-    const tg = h.target === c, ty = c.type;
-    return `<div class="oc${tg ? ' tg' : ''}${c.vip ? ' vip' : ''}${ty.id === 'horse' ? ' horse' : ''}${c.claim ? ' claimed' : ''}"><div class="oh"><b>${i + 1}</b><span>${c.order.name}</span></div>
-      ${ty.name || c.claim ? `<div class="ty">${ty.name ? `${ty.emo}${ns > 3 ? '' : ty.name}×${ty.mul} ` : ''}${c.claim ? `<span class="st">🧑‍🍳${ns > 3 && ty.name ? '' : '店员在做'}</span>` : ''}</div>` : ''}
+    const tg = h.target === c, ty = c.type, sm = ns > 3;
+    const who = ty.id === 'rider' ? `🛵${sm ? '' : '外卖'} 还要${c.left}杯 ` : ty.id === 'pal' ? `${ty.emo}${sm ? '' : ty.name}×${ty.mul} ` : ty.name ? `${ty.emo}${sm ? '' : ty.name}×${ty.mul} ` : '';
+    return `<div class="oc${tg ? ' tg' : ''}${c.vip ? ' vip' : ''}${ty.id === 'horse' ? ' horse' : ''}${ty.id === 'pal' ? ' pal' : ''}${c.claim ? ' claimed' : ''}${R.pin === c ? ' pin' : ''}" data-i="${i}"><div class="oh"><b>${i + 1}</b><span>${c.order.hot ? '🔥' : ''}${c.order.name}</span></div>
+      ${who || c.claim ? `<div class="ty">${who}${c.claim ? `<span class="st">🧑‍🍳${sm && who ? '' : '店员在做'}</span>` : ''}</div>` : ''}
       <div class="oi">${sorted(c.order.items).map((id) => chip(id, tg && cup && cup.items.includes(id))).join('')}</div><i class="pb"><u data-s="${i}"></u></i></div>`;
   }).join('');
   for (let i = 0; i < ns; i++) bars[i] = $('orders').querySelector(`u[data-s="${i}"]`);
@@ -117,6 +150,16 @@ export function frame(t) {
   if (R.phase === 'title') return;
   if (R.dirty) renderHud();
   const slow = t - lastSlow > 0.2; if (slow) lastSlow = t;
+  if (shown !== S.coins) { // 金币数字滚动
+    shown = shown < 0 || Math.abs(S.coins - shown) < 1.5 ? S.coins : shown + (S.coins - shown) * 0.22;
+    $('coins').textContent = fmt(shown);
+  }
+  if (slow && !$('frow').hidden) {
+    const fv = R.feverT > 0;
+    $('feverfill').style.width = (fv ? Math.min(1, R.feverT / (12 + 3 * G.lv('fever'))) : R.fever) * 100 + '%';
+    $('fevertxt').textContent = fv ? `狂热 ${Math.ceil(R.feverT)}s ×1.5` : R.dash > 0 ? `⚡ ${Math.ceil(R.dash)}s` : '';
+    for (const b of $('skills').children) { const cd = R.skillCd[b.dataset.k] || 0; b.classList.toggle('cd', cd > 0); b.lastChild.textContent = cd > 0 ? Math.ceil(cd) : ''; }
+  }
   if (R.dirty || slow) renderActions();
   // 时钟
   if (slow) {
@@ -131,7 +174,7 @@ export function frame(t) {
     if (st.off) { tg.el.style.display = 'none'; continue; }
     const [x, y, ok] = W.project(st.x, st.ly, st.z);
     tg.el.style.display = ok ? '' : 'none';
-    tg.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`;
+    tg.el.style.transform = `translate(${Math.min(innerWidth - 44, Math.max(44, x)).toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`;
     if (slow || R.dirty) {
       const s = G.status(st.id), html = `${st.emo} ${st.name}${s ? `<small>${s}</small>` : ''}`;
       if (html !== tg.html) { tg.html = html; tg.el.innerHTML = html; }
@@ -169,26 +212,29 @@ const buyBtn = (act, cost, label, sub) => `<button class="btn${S.coins < cost ? 
 function renderSheet(keep) {
   const body = $('sheetbody'), sc = body.scrollTop; let h = '';
   if (sheetName === 'shop') {
-    h = head('🛒 进货', `余额 💰${fmt(S.coins)}　今天已进货 💰${fmt(R.today ? R.today.cost : 0)}　货品即买即到`);
+    h = head('🛒 进货', `余额 💰${fmt(S.coins)}　今天已进货 💰${fmt(R.today ? R.today.cost : 0)}　货品即买即到${G.lv('bulk') ? `　批发价 -${G.lv('bulk') * 6}%` : ''}`);
+    const plan = G.restockPlan();
+    h += plan.cost ? `<button class="btn big${S.coins < plan.cost ? ' soft' : ''}" style="margin:0 0 10px" data-a="restock">📦 一键补货<small>把 ${plan.list.length} 种常用原料补到安全库存　💰${fmt(plan.cost)}</small></button>` : '<p class="sub center">✅ 库存充足，今天不用补货</p>';
     for (const id of SEQ) {
       if (!SHOP[id] || !G.unlocked().has(id)) continue;
       const it = SHOP[id], ing = ING[id], n = S.stock[id] || 0, tea = ing.type === 'tea', pe = id === 'pearl';
       const info = tea ? `茶叶 ${n} 包 · 桶里 ${S.urn[id] || 0} 杯（每包泡 ${G.urnCap()} 杯）` : pe ? `生珍珠 ${n} 袋 · 已煮好 ${S.cooked} 份（每袋 8 份）` : `库存 ${n} 份`;
       h += `<div class="row${n <= (tea || pe ? 0 : 2) ? ' low' : ''}"><div class="e">${ing.emo}</div><div class="m"><b>${ing.name}</b><small>${info}</small></div>
-        ${buyBtn(`buy:${id}:1`, it.cost, `+${it.n}${it.unit[0] === '份' ? '份' : it.unit[0]}`)}${buyBtn(`buy:${id}:5`, it.cost * 5, '×5')}</div>`;
+        ${buyBtn(`buy:${id}:1`, G.cost(id), `+${it.n}${it.unit[0] === '份' ? '份' : it.unit[0]}`)}${buyBtn(`buy:${id}:5`, G.cost(id) * 5, '×5')}</div>`;
     }
-    h += '<p class="sub">🧊 冰块免费不限量。泡好的茶和煮好的珍珠不能隔夜，打烊时会倒掉哦。</p>';
+    h += `<p class="sub">🧊 冰块免费不限量。${G.lv('fridge') ? '有保鲜冷柜，泡好的茶和熟珍珠可以留到明天。' : '泡好的茶和煮好的珍珠不能隔夜，打烊时会倒掉哦。'}</p>`;
   } else if (sheetName === 'up') {
     h = head('⬆️ 升级小店', `余额 💰${fmt(S.coins)}　魅力 ${G.charm()}（每点 +3% 小费、+2% 客流）`);
     h += `<div class="seg">${[['shop', '店铺'], ['up', '设备'], ['staff', '店员'], ['decor', '装饰']].map(([k, n]) => `<button class="${sheetTab === k ? 'on' : ''}" data-a="tab:${k}">${n}</button>`).join('')}</div>`;
     if (sheetTab === 'shop') {
       const cur = SHOPS[S.shop - 1], nx = SHOPS[S.shop];
-      h += `<div class="hero"><div class="he">${cur.emo}</div><b>${cur.name}</b><small>${'★'.repeat(cur.t)}${'☆'.repeat(5 - cur.t)}　${cur.slots} 个点单位 · ${cur.tables.length * 2} 个座位 · 可雇 ${cur.staff} 位奶茶师</small></div>`;
+      h += `<div class="hero"><div class="he">${cur.emo}</div><b>${cur.name}</b><small>${'★'.repeat(cur.t)}${'☆'.repeat(SHOPS.length - cur.t)}　${cur.slots} 个点单位 · ${cur.tables.length * 2} 个座位 · 可雇 ${cur.staff} 位奶茶师</small></div>`;
       if (nx) {
         const okLv = S.level >= nx.lv;
         h += `<div class="row next"><div class="e">${nx.emo}</div><div class="m"><b>扩建为「${nx.name}」</b><small>${nx.slots} 个点单位 · ${nx.tables.length * 2} 个座位 · 可雇 ${nx.staff} 位奶茶师<br>客流 +22%，魅力 +2${okLv ? '' : `<br><span style="color:var(--bad)">需要 Lv.${nx.lv}（当前 Lv.${S.level}）</span>`}${R.phase !== 'prep' ? '<br>打烊后的准备阶段才能施工' : ''}</small></div>
           <button class="btn${S.coins < nx.cost || !okLv || R.phase !== 'prep' ? ' no' : ''}" data-a="expand">扩建<small>💰${fmt(nx.cost)}</small></button></div>`;
-      } else h += '<p class="sub center">🏰 已经是最大规模的总店啦！继续开分店吧</p>';
+      } else h += '<p class="sub center">👑 已经是最大规模的云端城堡啦！继续开分店、研发配方吧</p>';
+      h += '<button class="btn g" style="display:block;width:100%;margin:2px 0 4px" data-a="tour">🎥 全景欣赏我的店</button>';
       h += `<h3>连锁分店　每天打烊分红 💰${fmt(G.branchIncome())}</h3>`;
       for (const b of BRANCHES) {
         const l = S.branch[b.id] || 0, lock = S.shop < b.shop;
@@ -213,18 +259,39 @@ function renderSheet(keep) {
     for (const r of RECIPES) {
       const ok = r.lv <= S.level;
       const l = S.rlv[r.id] || 0;
-      h += `<div class="row${ok ? '' : ' lock'}"><div class="e">${ok ? '🧋' : '🔒'}</div><div class="m"><b>${r.name} ${ok ? `<span class="rs r${l}">${RSTAR[l]}</span>` : ''}</b>${ok ? `<div class="chips">${sorted(r.items).map((i) => chip(i)).join('')}</div><small>售价 💰${G.price(r)}　<span class="dots">${'★'.repeat(l)}${'☆'.repeat(5 - l)}</span></small>` : `<small>Lv.${r.lv} 解锁</small>`}</div>${!ok ? `<b>💰${G.price(r)}</b>` : l >= 5 ? '<span class="btn done">传奇</span>' : buyBtn(`rec:${r.id}`, G.recCost(r), '研发', `💰${fmt(G.recCost(r))}`)}</div>`;
+      h += `<div class="row${ok ? '' : ' lock'}${r.id === R.hot ? ' next' : ''}"><div class="e">${ok ? (r.id === R.hot ? '🔥' : '🧋') : '🔒'}</div><div class="m"><b>${r.name} ${ok ? `<span class="rs r${l}">${RSTAR[l]}</span>` : ''}${r.id === R.hot ? ' <span class="rs r4">今日爆款 ×1.5</span>' : ''}</b>${ok ? `<div class="chips">${sorted(r.items).map((i) => chip(i)).join('')}</div><small>售价 💰${G.price(r)}　<span class="dots">${'★'.repeat(l)}${'☆'.repeat(5 - l)}</span></small>` : `<small>Lv.${r.lv} 解锁</small>`}</div>${!ok ? `<b>💰${G.price(r)}</b>` : l >= 5 ? '<span class="btn done">传奇</span>' : buyBtn(`rec:${r.id}`, G.recCost(r), '研发', `💰${fmt(G.recCost(r))}`)}</div>`;
     }
   } else if (sheetName === 'tasks') {
-    h = head('🎯 今日目标', `完成目标立刻获得奖励 · 当前称号「${G.rank()}」`);
-    for (const g of R.goals) h += `<div class="row"><div class="e">${g.done ? '✅' : '🎯'}</div><div class="m"><b>${g.text(g.target)}</b><small>进度 ${Math.min(g.target, Math.floor(R.today[g.type]))}/${g.target}</small></div><span class="btn ${g.done ? 'done' : 'g'}">💰${g.reward}</span></div>`;
-    h += `<h3>生涯</h3><div class="grid2"><div class="cell">累计出杯<b>${fmt(S.stats.served)}</b></div><div class="cell">累计收入<b>${fmt(S.stats.earned)}</b></div><div class="cell">最高连击<b>${S.stats.bestCombo}</b></div><div class="cell">服务贵宾<b>${S.stats.vip}</b></div></div><h3>成就 ${Object.keys(S.ach).length}/${ACHS.length}</h3>`;
-    for (const a of ACHS) h += `<div class="row${S.ach[a.id] ? '' : ' lock'}"><div class="e">${S.ach[a.id] ? '🏆' : '🔒'}</div><div class="m"><b>${a.name}</b><small>${a.desc}</small></div><span class="btn ${S.ach[a.id] ? 'done' : 'g'}">💰${fmt(a.r)}</span></div>`;
+    h = head('🎯 目标与图鉴', `完成目标立刻获得奖励 · 当前店面「${G.rank()}」`);
+    h += `<div class="seg">${[['goal', '今日目标'], ['pal', '常客'], ['ach', `成就 ${Object.keys(S.ach).length}/${ACHS.length}`]].map(([k, n]) => `<button class="${taskTab === k ? 'on' : ''}" data-a="ttab:${k}">${n}</button>`).join('')}</div>`;
+    if (taskTab === 'goal') {
+      for (const g of R.goals) h += `<div class="row"><div class="e">${g.done ? '✅' : '🎯'}</div><div class="m"><b>${g.text(g.target)}</b><small>进度 ${Math.min(g.target, Math.floor(R.today[g.type]))}/${g.target}</small></div><span class="btn ${g.done ? 'done' : 'g'}">💰${g.reward}</span></div>`;
+      const hot = RECIPES.find((r) => r.id === R.hot);
+      if (hot) h += `<div class="row next"><div class="e">🔥</div><div class="m"><b>今日爆款：${hot.name}</b><small>今天售价 ×1.5（💰${G.price(hot)}），点的人也更多，记得多备点料</small></div></div>`;
+      h += `<h3>生涯</h3><div class="grid2"><div class="cell">累计出杯<b>${fmt(S.stats.served)}</b></div><div class="cell">累计收入<b>${fmt(S.stats.earned)}</b></div><div class="cell">最高连击<b>${S.stats.bestCombo}</b></div><div class="cell">服务贵宾<b>${S.stats.vip}</b></div><div class="cell">狂热时刻<b>${S.stats.fever || 0}</b></div><div class="cell">外卖单<b>${S.stats.rider || 0}</b></div></div>`;
+    } else if (taskTab === 'pal') {
+      h += '<p class="sub">常客只喝自己最爱的那一款。每次完美出杯 +1 好感，每升一颗 ♥：一份谢礼、魅力 +1、付款再多 10%。</p>';
+      for (const p of PALS) {
+        const n = S.pal[p.id] || 0, hs = G.hearts(p.id), lock = p.lv > S.level, fav = RECIPES.find((r) => r.id === p.fav), nx = PAL_HEART[hs];
+        h += `<div class="row${lock ? ' lock' : ''}"><div class="e">${lock ? '❔' : p.emo}</div><div class="m"><b>${lock ? '神秘客人' : p.name} <span class="hearts">${'♥'.repeat(hs)}<i>${'♥'.repeat(5 - hs)}</i></span></b>
+          <small>${lock ? `Lv.${p.lv} 后会来光顾` : `最爱「${fav.name}」　“${p.say}”<br>${nx ? `好感 ${n}/${nx}` : '已是知己'}　付款 ×${(1.2 + 0.1 * hs).toFixed(1)}`}</small></div></div>`;
+      }
+    } else for (const a of ACHS) h += `<div class="row${S.ach[a.id] ? '' : ' lock'}"><div class="e">${S.ach[a.id] ? '🏆' : '🔒'}</div><div class="m"><b>${a.name}</b><small>${a.desc}</small></div><span class="btn ${S.ach[a.id] ? 'done' : 'g'}">💰${fmt(a.r)}</span></div>`;
   } else if (sheetName === 'set') {
     h = head('⚙️ 设置', '游戏已暂停');
-    for (const [k, n, d] of [['sfx', '🔔 音效', '操作与收银音效'], ['music', '🎵 音乐', '轻快的背景音乐'], ['guide', '💡 新手指引', '黄色箭头和下一步提示']])
+    for (const [k, n, d] of [['auto', '🤖 顺手操作', '走到提示的设备旁，自动完成那一步，不用再点按钮'], ['guide', '💡 指引', '黄色箭头和下一步提示'], ['sfx', '🔔 音效', '操作与收银音效'], ['music', '🎵 音乐', '轻快的背景音乐']])
       h += `<div class="row"><div class="m"><b>${n}</b><small>${d}</small></div><button class="tog${S.set[k] ? ' on' : ''}" data-a="set:${k}"></button></div>`;
-    h += `<div class="row"><div class="m"><b>📱 添加到主屏幕</b><small>Safari 底部「分享」→「添加到主屏幕」，即可像 App 一样全屏游玩</small></div></div>
+    h += `<div class="row"><div class="m"><b>🎥 全景欣赏</b><small>镜头拉远，绕着整家店转一圈</small></div><button class="btn g" data-a="tour">看看</button></div>
+      <div class="row"><div class="m"><b>📒 玩法小贴士</b><small>
+        · <b style="display:inline">点订单卡</b>可以指定「这单我来做」，店员会让给你<br>
+        · 连续亲手做对会攒 🔥 狂热条，攒满进入狂热时刻：收入 ×1.5<br>
+        · 订单上方右侧是技能按钮：安抚客人、闪电手、魔法调饮<br>
+        · 每天有一款 🔥 今日爆款，售价 ×1.5，开门前多备料<br>
+        · 🛵 外卖骑手一次要 2~3 杯同款；💗 常客只点自己最爱的<br>
+        · 店里排满时客人会改下线上外卖单，空闲店员做好放进 🛵 外卖柜<br>
+        · 第 5 天起设备偶尔会出故障，要老板亲自走过去修<br>
+        · 客人看到有人在做自己的单，耐心掉得更慢；排队太久的客人耐心更少</small></div></div>
+      <div class="row"><div class="m"><b>📱 添加到主屏幕</b><small>Safari 底部「分享」→「添加到主屏幕」，即可像 App 一样全屏游玩</small></div></div>
       <div class="row"><div class="m"><b>🗑️ 重新开始</b><small>清空存档，从第 1 天重来</small></div><button class="btn g" data-a="reset">清空存档</button></div>`;
   } else if (sheetName === 'level') {
     const d = sheetData;
@@ -233,13 +300,16 @@ function renderSheet(keep) {
       h += '<h3>新饮品解锁（新原料已免费送到店里）</h3>';
       for (const r of d.recs) h += `<div class="row"><div class="e">🧋</div><div class="m"><b>${r.name}</b><div class="chips">${sorted(r.items).map((i) => chip(i)).join('')}</div></div><b>💰${G.price(r)}</b></div>`;
     } else h += `<p class="sub center">招牌越来越响！升级奖励 💰${d.bonus}</p>`;
+    for (const s of d.skills || []) h += `<div class="row next"><div class="e">${s.emo}</div><div class="m"><b>新技能：${s.name}</b><small>${s.desc}（营业时点订单下方的圆按钮，冷却 ${s.cd} 秒）</small></div></div>`;
+    for (const p of d.pals || []) h += `<div class="row"><div class="e">${p.emo}</div><div class="m"><b>新常客：${p.name}</b><small>听说了你的店，以后会常来。“${p.say}”</small></div></div>`;
     h += '<button class="btn big" data-a="close">太棒了！</button>';
   } else if (sheetName === 'summary') {
     const d = sheetData;
     h = `<div class="center"><h2 style="justify-content:center">🌙 第 ${d.day} 天打烊</h2><div class="stars">${'⭐'.repeat(d.stars)}<span style="opacity:.25">${'⭐'.repeat(5 - d.stars)}</span></div>
-      <p class="sub">${['', '手忙脚乱的一天，明天会更好', '有点吃力，试试升级设备', '稳稳当当！', '客人们都很满意！', '完美营业！口碑大涨！'][d.stars]}${d.bonus ? `　好评奖励 💰${d.bonus}` : ''}</p></div>
-      <div class="grid2"><div class="cell">营业额<b>💰${fmt(d.income)}</b></div><div class="cell">小费<b>💰${fmt(d.tips)}</b></div><div class="cell">进货 + 工资<b>💰${fmt(d.cost + d.wages)}</b></div>${d.branch ? `<div class="cell">分店分红<b>💰${fmt(d.branch)}</b></div><div class="cell">店员出杯<b>${d.staff}</b></div>` : ''}<div class="cell">今日净赚<b style="color:${d.profit >= 0 ? '#2f9b62' : '#ff6b7d'}">💰${fmt(d.profit)}</b></div>
-      <div class="cell">出杯 / 流失<b>${d.served} / ${d.lost}</b></div><div class="cell">最高连击<b>${d.bestCombo}</b></div></div>
+      <p class="sub">${['', '手忙脚乱的一天，明天会更好', '有点吃力，试试升级设备', '稳稳当当！', '客人们都很满意！', '完美营业！口碑大涨！'][d.stars]}${d.bonus ? `　好评奖励 💰${d.bonus}` : ''}</p>
+      ${d.lost >= 3 ? `<p class="sub tipbox">💡 今天有 ${d.lost} 位客人等不及走了。${G.lv('hire') < SHOPS[S.shop - 1].staff ? '雇一位奶茶师' : '培训店员'}、升级跑鞋和等位区都能缓解；快撑不住时用 🍬 技能安抚。</p>` : ''}</div>
+      <div class="grid2"><div class="cell">营业额<b>💰${fmt(d.income)}</b></div><div class="cell">小费<b>💰${fmt(d.tips)}</b></div><div class="cell">进货 + 工资<b>💰${fmt(d.cost + d.wages)}</b></div>${d.branch || d.staff ? `<div class="cell">分店分红<b>💰${fmt(d.branch)}</b></div><div class="cell">店员出杯<b>${d.staff}${d.online ? `<small style="font-size:11px;color:var(--ink2)"> 含外卖 ${d.online}</small>` : ""}</b></div>` : ''}<div class="cell">今日净赚<b style="color:${d.profit >= 0 ? '#2f9b62' : '#ff6b7d'}">💰${fmt(d.profit)}</b></div>
+      <div class="cell">出杯 / 流失<b>${d.served} / ${d.lost}</b></div><div class="cell">连击 / 狂热<b>${d.bestCombo} / ${d.fever || 0}</b></div></div>
       <p class="sub center" style="margin-top:10px">🎯 完成目标 ${d.goals}/3${d.wasted ? `　·　隔夜的 ${d.wasted} 份茶和珍珠已倒掉` : ''}</p>
       <button class="btn big" data-a="close">☀️ 准备第 ${S.day} 天</button>`;
   }

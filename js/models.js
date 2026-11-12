@@ -78,8 +78,9 @@ export function makeChibi(o = {}) {
   });
   const head = new THREE.Group(); head.position.set(0, 1.2, 0); inner.add(head);
   const hm = mesh(sph(0.4, 24, 18), skin, 0, 0, 0, head); hm.scale.set(1.04, 0.94, 0.98);
+  const eyes = [];
   for (const s of [-1, 1]) {
-    const e = mesh(sph(0.052), BLACK, s * 0.15, 0.0, 0.355, head); e.scale.set(1, 1.35, 0.5);
+    const e = mesh(sph(0.052), BLACK, s * 0.15, 0.0, 0.355, head); e.scale.set(1, 1.35, 0.5); eyes.push(e);
     mesh(sph(0.018), WHITE, s * 0.15 + 0.018, 0.03, 0.385, head);
     const b = mesh(sph(0.062), BLUSH, s * 0.25, -0.1, 0.305, head); b.scale.set(1, 0.6, 0.4);
   }
@@ -114,7 +115,12 @@ export function makeChibi(o = {}) {
   if (o.shades) for (const s of [-1, 1]) { const g2 = mesh(sph(0.1, 10, 8), M('#2b2738'), s * 0.15, 0.01, 0.37, head); g2.scale.set(1, 0.75, 0.3); }
   if (o.visor) { mesh(cyl(0.41, 0.42, 0.1, 20), M(o.visor), 0, 0.2, 0, head); const br = mesh(cyl(0.3, 0.3, 0.035, 18), M(o.visor), 0, 0.16, 0.26, head); br.scale.z = 0.75; }
   if (o.crown) { const c = mesh(cyl(0.16, 0.13, 0.13, 6), M('#ffd23f'), 0, 0.44, 0, head); c.rotation.y = 0.3; }
-  g.userData = { inner, legL, legR, arms, head, ph: Math.random() * 6, mv: 0 };
+  if (o.helmet) { // 外卖头盔 + 保温箱
+    const h = mesh(HAIR, M(o.helmet), 0, 0.03, 0, head); h.scale.set(1.13, 1.08, 1.13); h.rotation.x = -0.12;
+    const br = mesh(cyl(0.3, 0.3, 0.035, 18), M('#3f3a52'), 0, 0.14, 0.3, head); br.scale.z = 0.6;
+    mesh(rbox(0.46, 0.42, 0.3, 0.06), M(o.helmet), 0, 0.66, -0.36, inner); mesh(rbox(0.3, 0.12, 0.02, 0.01), WHITE, 0, 0.7, -0.515, inner);
+  }
+  g.userData = { inner, legL, legR, arms, head, eyes, bl: 1 + Math.random() * 4, ph: Math.random() * 6, mv: 0 };
   return g;
 }
 
@@ -133,7 +139,11 @@ export function animChibi(g, dt, o = {}) {
   u.arms[0].rotation.x = hold || -s * 0.6 * u.mv;
   u.arms[1].rotation.x = hold || s * 0.6 * u.mv;
   u.head.rotation.z = Math.sin(u.ph * 0.5) * 0.045;
+  u.head.rotation.y = o.fret ? Math.sin(u.ph * 3.2) * 0.3 : 0;
   if (o.happy) u.inner.position.y += Math.abs(Math.sin(u.ph * 2)) * 0.1;
+  if (o.fret && !o.sit) u.inner.position.y += Math.abs(Math.sin(u.ph * 2.4)) * 0.05;
+  u.bl -= dt; if (u.bl < -0.12) u.bl = 1.8 + Math.random() * 3.6;
+  const ey = u.bl < 0 ? 0.25 : 1.35; if (u.eyes[0].scale.y !== ey) for (const e of u.eyes) e.scale.y = ey;
 }
 
 // ---------- 奶茶杯 ----------

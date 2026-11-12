@@ -56,9 +56,11 @@ const grid = (xs, zs) => zs.flatMap((z) => xs.map((x) => [x, z]));
 export const SHOPS = [
   { t: 1, name: '街角小摊', emo: '🏠', cost: 0, lv: 1, hw: 3.4, bz: -6.6, slots: 2, waits: 2, tables: [[2.2, -4.9]], staff: 1 },
   { t: 2, name: '邻里小店', emo: '🏡', cost: 800, lv: 3, hw: 3.4, bz: -9, slots: 3, waits: 3, tables: grid([-2.2, 2.2], [-6]), staff: 2 },
-  { t: 3, name: '人气茶铺', emo: '🏪', cost: 5000, lv: 7, hw: 3.4, bz: -11.8, slots: 3, waits: 6, tables: grid([-2.2, 2.2], [-6.8, -9.6]), staff: 3 },
-  { t: 4, name: '网红旗舰店', emo: '🏬', cost: 25000, lv: 12, hw: 4.9, bz: -12.2, slots: 4, waits: 8, tables: grid([-4, -2, 2, 4], [-6.8, -9.6]), staff: 4 },
-  { t: 5, name: '奶茶帝国总店', emo: '🏰', cost: 100000, lv: 18, hw: 5.7, bz: -15, slots: 4, waits: 8, tables: grid([-4.5, -2, 2, 4.5], [-6.8, -9.6, -12.4]), staff: 6 },
+  { t: 3, name: '人气茶铺', emo: '🏪', cost: 5000, lv: 7, hw: 3.4, bz: -11.8, slots: 4, waits: 8, tables: grid([-2.2, 2.2], [-6.8, -9.6]), staff: 4 },
+  { t: 4, name: '网红旗舰店', emo: '🏬', cost: 25000, lv: 12, hw: 4.9, bz: -12.2, slots: 4, waits: 8, tables: grid([-4, -2, 2, 4], [-6.8, -9.6]), staff: 5 },
+  { t: 5, name: '奶茶帝国总店', emo: '🏰', cost: 100000, lv: 18, hw: 5.7, bz: -15, slots: 5, waits: 10, tables: grid([-4.5, -2, 2, 4.5], [-6.8, -9.6, -12.4]), staff: 6 },
+  { t: 6, name: '奶茶梦工厂', emo: '🎡', cost: 420000, lv: 22, hw: 6.5, bz: -18.6, slots: 5, waits: 15, tables: grid([-5.3, -3.2, 3.2, 5.3], [-8.2, -11, -13.8, -16.6]), staff: 7 },
+  { t: 7, name: '云端奶茶城堡', emo: '👑', cost: 1500000, lv: 26, hw: 7.3, bz: -21.4, slots: 5, waits: 15, tables: grid([-6.2, -4.2, -2.2, 2.2, 4.2, 6.2], [-8.2, -11, -13.8, -16.6, -19.4]), staff: 8 },
 ];
 
 // 顾客类型：mul 付款倍率，pat 耐心倍率
@@ -68,6 +70,27 @@ export const CTYPES = [
   { id: 'star', name: '探店博主', emo: '📸', w: 5, mul: 1.3, pat: 0.9, shop: 2 },
   { id: 'rich', name: '富豪', emo: '👑', w: 6, mul: 3, pat: 0.78, lv: 3 },
   { id: 'horse', name: '金马大亨', emo: '🐴', w: 1.2, mul: 8, pat: 0.72, shop: 3 },
+  { id: 'rider', name: '外卖骑手', emo: '🛵', w: 9, mul: 1.15, pat: 1.5, shop: 2 },
+];
+
+// 常客：最爱的饮品；好感度（完美出杯累计）到达门槛升一颗心，每颗心：谢礼 + 魅力 +1 + 付款更大方
+export const PALS = [
+  { id: 'abu', name: '小熊阿布', emo: '🐻', lv: 1, fav: 'pearl', say: '珍珠要多多的！', look: { kind: 'bear', skin: '#e2b185', outfit: '#8fd0ff', pants: '#5d7fa3' } },
+  { id: 'tang', name: '兔兔糖糖', emo: '🐰', lv: 2, fav: 'jasmine', say: '清清爽爽的最好啦～', look: { kind: 'bunny', skin: '#ffe3ec', outfit: '#ff9fb4', pants: '#c98aa0' } },
+  { id: 'dong', name: '学生小东', emo: '🎒', lv: 4, fav: 'mango', say: '下课就想喝冰的！', look: { kind: 'human', hair: '#3f3340', style: 4, outfit: '#a5e6cc', pants: '#5d7fa3' } },
+  { id: 'mimi', name: '奶猫咪咪', emo: '🐱', lv: 5, fav: 'pudding', say: '布丁喵～', look: { kind: 'cat', skin: '#f7e7d3', outfit: '#c9b3ff', pants: '#8f7bd6' } },
+  { id: 'granny', name: '茶婆婆', emo: '👵', lv: 8, fav: 'oolong', say: '还是老味道好', look: { kind: 'human', hair: '#e6e1ea', style: 2, outfit: '#b79adf', skin: '#f3c9a5', pants: '#7a6a86' } },
+  { id: 'linda', name: '白领琳达', emo: '👩‍💼', lv: 9, fav: 'matcha', say: '下午三点的续命水', look: { kind: 'human', hair: '#6b4a3a', style: 3, outfit: '#5d6f9c', tie: '#ff7d95', pants: '#3f3a52' } },
+  { id: 'mango', name: '主播芒芒', emo: '🎤', lv: 13, fav: 'yangzhi', say: '家人们，这家绝了！', look: { kind: 'human', hair: '#f2c66d', style: 1, outfit: '#ffb38a', shades: true, pants: '#7a6a86' } },
+  { id: 'rex', name: '恐龙阿绿', emo: '🦖', lv: 15, fav: 'king', say: '满杯才够劲！', look: { kind: 'bear', skin: '#8fd694', outfit: '#ffd66b', pants: '#6f8f7a' } },
+];
+export const PAL_HEART = [2, 6, 12, 20, 32];
+
+// 主动技能：到达等级解锁，营业中点右侧按钮使用
+export const SKILLS = [
+  { id: 'calm', name: '试饮小样', emo: '🍬', lv: 2, cd: 50, desc: '吧台前所有客人的耐心回复一半' },
+  { id: 'dash', name: '闪电手', emo: '⚡', lv: 4, cd: 60, desc: '10 秒内跑得飞快，封口瞬间完成' },
+  { id: 'magic', name: '魔法调饮', emo: '🪄', lv: 7, cd: 80, desc: '手上立刻变出当前目标订单的成品' },
 ];
 
 export const BRANCHES = [
@@ -85,8 +108,9 @@ export const SCENES = [
   { id: 'beach', name: '阳光海岸', emo: '🏝️', cost: 6000, shop: 2 },
   { id: 'snow', name: '雪国小镇', emo: '⛄', cost: 15000, shop: 3 },
   { id: 'night', name: '霓虹夜市', emo: '🏮', cost: 30000, shop: 4 },
+  { id: 'cloud', name: '云端彩虹岛', emo: '🌈', cost: 120000, shop: 5 },
 ];
-export const HIRE_COST = [400, 1800, 6000, 18000, 45000, 110000];
+export const HIRE_COST = [300, 1500, 6000, 18000, 45000, 110000, 300000, 700000];
 
 // 进货：n = 每次买到的份数；茶叶 1 包泡一桶，生珍珠 1 袋煮一锅
 export const SHOP = {
@@ -99,21 +123,25 @@ export const SHOP = {
 };
 
 export const UPGRADES = [
-  { id: 'shoes', cat: 'up', name: '轻盈跑鞋', emo: '👟', max: 5, base: 80, g: 1.9, desc: (l) => `移动速度 +${l * 10}%` },
-  { id: 'urn', cat: 'up', name: '大容量茶桶', emo: '🫖', max: 4, base: 90, g: 1.9, desc: (l) => `每桶茶可倒 ${6 + l * 2} 杯` },
-  { id: 'stove', cat: 'up', name: '猛火灶', emo: '🔥', max: 4, base: 100, g: 1.9, desc: (l) => `泡茶/煮珍珠快 ${l * 18}%` },
-  { id: 'sealer', cat: 'up', name: '极速封口机', emo: '⚡', max: 3, base: 120, g: 2, desc: (l) => `封口只需 ${(1.5 - l * 0.38).toFixed(1)} 秒` },
+  { id: 'shoes', cat: 'up', name: '轻盈跑鞋', emo: '👟', max: 5, base: 90, g: 2.4, desc: (l) => `移动速度 +${l * 10}%` },
+  { id: 'urn', cat: 'up', name: '大容量茶桶', emo: '🫖', max: 4, base: 100, g: 2.2, desc: (l) => `每桶茶可倒 ${6 + l * 2} 杯` },
+  { id: 'stove', cat: 'up', name: '猛火灶', emo: '♨️', max: 4, base: 120, g: 2.4, desc: (l) => `泡茶/煮珍珠快 ${l * 18}%` },
+  { id: 'sealer', cat: 'up', name: '极速封口机', emo: '⚡', max: 3, base: 150, g: 2.6, desc: (l) => `封口只需 ${(1.0 - l * 0.25).toFixed(2)} 秒` },
   { id: 'shelf', cat: 'up', name: '备餐台', emo: '🗄️', max: 3, base: 150, g: 2.2, desc: (l) => l ? `可提前做好暂存 ${l} 杯` : '提前做好的奶茶可以暂存' },
-  { id: 'sign', cat: 'up', name: '醒目招牌', emo: '📣', max: 6, base: 120, g: 1.8, desc: (l) => `客流量 +${l * 12}%` },
-  { id: 'sofa', cat: 'up', name: '舒适等位区', emo: '🛋️', max: 5, base: 100, g: 1.8, desc: (l) => `客人耐心 +${l * 12}%` },
-  { id: 'quality', cat: 'up', name: '优质原料', emo: '✨', max: 8, base: 200, g: 1.75, desc: (l) => `所有饮品售价 +${l * 8}%` },
-  { id: 'tipjar', cat: 'up', name: '可爱小费罐', emo: '🫙', max: 5, base: 90, g: 1.9, desc: (l) => `小费 +${l * 20}%` },
+  { id: 'sign', cat: 'up', name: '醒目招牌', emo: '📣', max: 8, base: 150, g: 2.3, desc: (l) => `客流量 +${l * 10}%` },
+  { id: 'sofa', cat: 'up', name: '舒适等位区', emo: '🛋️', max: 6, base: 120, g: 2.3, desc: (l) => `客人耐心 +${l * 10}%` },
+  { id: 'quality', cat: 'up', name: '优质原料', emo: '✨', max: 12, base: 250, g: 2.05, desc: (l) => `所有饮品售价 +${l * 6}%` },
+  { id: 'tipjar', cat: 'up', name: '可爱小费罐', emo: '🫙', max: 6, base: 100, g: 2.3, desc: (l) => `小费 +${l * 20}%` },
+  { id: 'care', cat: 'up', name: '设备保养', emo: '🔧', max: 3, base: 500, g: 3, desc: (l) => l ? `设备故障减少 ${l * 30}%，修理奖励 +${l * 50}%` : '设备更少出故障，修理奖励更高' },
+  { id: 'fever', cat: 'up', name: '店长气场', emo: '🔥', max: 4, base: 400, g: 2.5, desc: (l) => `狂热时刻延长到 ${12 + l * 3} 秒` },
+  { id: 'bulk', cat: 'up', name: '批发会员卡', emo: '📦', max: 4, base: 300, g: 2.6, desc: (l) => `进货价 -${l * 6}%` },
+  { id: 'fridge', cat: 'up', name: '保鲜冷柜', emo: '❄️', max: 1, base: 1500, g: 1, desc: (l) => l ? '泡好的茶和熟珍珠可以留到第二天' : '打烊后茶和熟珍珠不用倒掉' },
   { id: 'cat', cat: 'staff', name: '猫咪店员', emo: '🐱', max: 3, base: 600, g: 3,
     desc: (l) => ['雇一只小猫帮忙', '自动泡茶、煮珍珠', '还会自动补货', '泡煮速度再翻倍'][l] },
-  { id: 'hire', cat: 'staff', name: '奶茶师', emo: '🧑‍🍳', max: 6, base: 0, g: 1,
+  { id: 'hire', cat: 'staff', name: '奶茶师', emo: '🧑‍🍳', max: 8, base: 0, g: 1,
     desc: (l) => l ? `${l} 位奶茶师在岗，自己取杯、加料、封口、出杯` : '雇一位奶茶师，全自动帮你做奶茶' },
-  { id: 'train', cat: 'staff', name: '店员培训', emo: '🎓', max: 5, base: 500, g: 2.3, desc: (l) => `奶茶师手速和脚步 +${l * 15}%` },
-  { id: 'waiter', cat: 'staff', name: '服务生', emo: '🐰', max: 3, base: 700, g: 2.8,
+  { id: 'train', cat: 'staff', name: '店员培训', emo: '🎓', max: 6, base: 600, g: 2.6, desc: (l) => `奶茶师手速和脚步 +${l * 12}%` },
+  { id: 'waiter', cat: 'staff', name: '服务生', emo: '🐰', max: 3, base: 800, g: 3,
     desc: (l) => l ? `自动去大厅收桌上小费，速度 Lv.${l}` : '雇一位服务生，自动收桌上的小费' },
 ];
 
@@ -173,6 +201,15 @@ export const ACHS = [
   { id: 'shop3', name: '门庭若市', desc: '扩建为人气茶铺', r: 1500, ok: (s) => s.shop >= 3 },
   { id: 'shop4', name: '全城打卡', desc: '扩建为网红旗舰店', r: 6000, ok: (s) => s.shop >= 4 },
   { id: 'shop5', name: '奶茶帝国', desc: '建成奶茶帝国总店', r: 30000, ok: (s) => s.shop >= 5 },
+  { id: 'shop6', name: '造梦的人', desc: '建成奶茶梦工厂', r: 100000, ok: (s) => s.shop >= 6 },
+  { id: 'shop7', name: '云端之上', desc: '建成云端奶茶城堡', r: 400000, ok: (s) => s.shop >= 7 },
+  { id: 'fever1', name: '燃起来了', desc: '第一次进入狂热时刻', r: 100, ok: (s) => (s.stats.fever || 0) >= 1 },
+  { id: 'fever50', name: '停不下来', desc: '累计 50 次狂热时刻', r: 3000, ok: (s) => (s.stats.fever || 0) >= 50 },
+  { id: 'rider', name: '使命必达', desc: '完成 20 份外卖单', r: 800, ok: (s) => (s.stats.rider || 0) >= 20 },
+  { id: 'online', name: '线上爆单', desc: '完成 100 份线上外卖单', r: 2500, ok: (s) => (s.stats.online || 0) >= 100 },
+  { id: 'pal1', name: '老朋友', desc: '和一位常客达到 ♥1', r: 200, ok: (s) => Object.values(s.pal || {}).some((v) => v >= 2) },
+  { id: 'pal5', name: '知己', desc: '和一位常客达到 ♥5', r: 5000, ok: (s) => Object.values(s.pal || {}).some((v) => v >= 32) },
+  { id: 'palall', name: '人见人爱', desc: '8 位常客全部 ♥3 以上', r: 20000, ok: (s) => Object.values(s.pal || {}).filter((v) => v >= 12).length >= 8 },
   { id: 'branch', name: '连锁起步', desc: '开出第一家分店', r: 2000, ok: (s) => Object.keys(s.branch || {}).length >= 1 },
   { id: 'branchall', name: '遍地开花', desc: '开齐 6 家分店', r: 100000, ok: (s) => Object.keys(s.branch || {}).length >= 6 },
   { id: 'star5', name: '传奇配方', desc: '把一款饮品研发到传奇', r: 3000, ok: (s) => Object.values(s.rlv || {}).some((v) => v >= 5) },

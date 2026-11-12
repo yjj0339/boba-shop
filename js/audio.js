@@ -1,6 +1,6 @@
 // 合成音效 + 轻快的背景音乐（全部 WebAudio 生成，无需音频文件）
 let ctx = null, master = null, musicGain = null, timer = null, step = 0, nextT = 0;
-export const audio = { sfxOn: true, musicOn: true };
+export const audio = { sfxOn: true, musicOn: true, tempo: 1 };
 
 export function initAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
@@ -44,7 +44,7 @@ const MEL = [76, 0, 79, 76, 72, 0, 74, 76, 0, 72, 69, 0, 72, 74, 76, 0, 77, 0, 8
   81, 0, 79, 77, 76, 0, 77, 79, 0, 74, 77, 0, 79, 83, 79, 0, 79, 0, 76, 71, 74, 0, 76, 79, 84, 0, 81, 0, 76, 0, 0, 0];
 function schedule() {
   if (!ctx || ctx.state !== 'running') return;
-  const sp = 60 / 104 / 2;
+  const sp = 60 / (104 * audio.tempo) / 2;
   if (nextT < ctx.currentTime) nextT = ctx.currentTime + 0.05;
   while (nextT < ctx.currentTime + 0.3) {
     const bar = Math.floor(step / 8) % 8, i = step % 8, c = CH[bar];

@@ -4,7 +4,7 @@ import { ING, THEMES, SHOPS } from './data.js';
 
 export const L = { SLOTS: [], WAITS: [], SEATS: [], TABLES: [], DOOR: [0, -8.7], WALK: [], OBST: [], hw: 3.4, bz: -9, tier: 1 };
 export function setLayout(sh) {
-  const xs = sh.slots === 2 ? [-2.2, -0.4] : sh.slots === 3 ? [-2.6, -1.1, 0.4] : [-2.85, -1.7, -0.55, 0.6];
+  const xs = sh.slots === 2 ? [-2.2, -0.4] : sh.slots === 3 ? [-2.6, -1.1, 0.4] : sh.slots === 4 ? [-2.35, -1.3, -0.25, 0.8] : [-2.5, -1.65, -0.8, 0.05, 0.9];
   L.hw = sh.hw; L.bz = sh.bz; L.tier = sh.t;
   L.SLOTS = xs.map((x) => [x, -2.15]);
   L.WAITS = []; for (let i = 0; i < sh.waits; i++) L.WAITS.push([xs[i % xs.length], -3.7 - Math.floor(i / xs.length) * 1.2]);
@@ -21,7 +21,9 @@ const ENV = {
   beach: { ground: '#f7e4b2', walk: '#fff4d8', road: '#f7e4b2', tree: ['#6fc28a'], sea: 1 },
   snow: { ground: '#f4f9ff', walk: '#e4ecf6', road: '#c5cfe0', tree: ['#7fb89a'], roof: '#ffffff', fall: '#ffffff', pine: 1 },
   night: { ground: '#66739a', walk: '#9b96b8', road: '#57526f', tree: ['#62b08a'], roof: '#8a7fd0', night: 1, lantern: 1 },
+  cloud: { ground: '#eaf5ff', walk: '#ffffff', road: '#dcecff', tree: ['#ffc9de', '#cfe6ff', '#fff0b0', '#d9c8ff'], roof: '#ffb3c4', cloud: 1 },
 };
+const torus = (() => { const c = new Map(); return (r) => { let g = c.get(r); if (!g) { g = new THREE.TorusGeometry(r, 0.3, 8, 56, Math.PI); c.set(r, g); } return g; }; })();
 
 export function createWorld(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -41,15 +43,19 @@ export function createWorld(canvas) {
 
   // ---------- 主题 ----------
   const th = { wall: toon('#fff'), accent: toon('#fff'), cab: toon('#fff') };
-  const fc = document.createElement('canvas'); fc.width = fc.height = 2;
-  const mkTex = () => { const t = new THREE.CanvasTexture(fc); t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const fc = document.createElement('canvas'); fc.width = fc.height = 128;
+  const mkTex = () => { const t = new THREE.CanvasTexture(fc); t.anisotropy = 4; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return t; };
   const texK = mkTex(), texL = mkTex();
   let themeId = null;
   function setTheme(id) {
     const t = THEMES.find((x) => x.id === id) || THEMES[0]; themeId = t.id;
     th.wall.color.set(t.wall); th.accent.color.set(t.accent); th.cab.color.set(t.cab);
-    const x = fc.getContext('2d');
-    x.fillStyle = t.fa; x.fillRect(0, 0, 2, 2); x.fillStyle = t.fb; x.fillRect(0, 0, 1, 1); x.fillRect(1, 1, 1, 1);
+    const x = fc.getContext('2d'), n = 64;
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) { // 带倒角高光和细缝的瓷砖
+      x.fillStyle = (i + j) % 2 ? t.fa : t.fb; x.fillRect(i * n, j * n, n, n);
+      x.strokeStyle = 'rgba(255,255,255,.6)'; x.lineWidth = 3; x.strokeRect(i * n + 4.5, j * n + 4.5, n - 9, n - 9);
+      x.strokeStyle = 'rgba(140,100,115,.13)'; x.lineWidth = 2; x.strokeRect(i * n + 1, j * n + 1, n - 2, n - 2);
+    }
     texK.needsUpdate = texL.needsUpdate = true;
   }
   setTheme('cream');
@@ -114,6 +120,15 @@ export function createWorld(canvas) {
         mesh(rbox(0.5, 0.07, 1.2, 0.03), M(c), x + 0.7, 0.14, z + 0.2, root);
       }
       for (const [x, z] of [[-9, bz - 12], [7, bz - 16], [18, bz - 11]]) { mesh(rbox(1.5, 0.35, 0.6, 0.12), M('#ffffff'), x, 0.1, z, root); mesh(cyl(0.025, 0.025, 1.3, 6), M('#b98a63'), x, 0.85, z, root); const sl = mesh(cone(0.55, 1.1, 3), M('#ff9fb4'), x + 0.2, 0.95, z, root); sl.scale.z = 0.1; }
+    } else if (e.cloud) {
+      const puff = (x, y, z, s) => { for (const [dx, dy, dz, r] of [[0, 0, 0, 1], [0.9, -0.15, 0.1, 0.7], [-0.85, -0.2, -0.1, 0.65], [0.3, 0.35, -0.2, 0.6]]) { const m = mesh(sph(0.9), M('#ffffff'), x + dx * s, y + dy * s, z + dz * s, root); m.scale.setScalar(r * s); m.castShadow = false; } };
+      for (let i = 0; i < 24; i++) { const r1 = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1, r2 = Math.abs(Math.sin(i * 78.233) * 12345.678) % 1; puff((r1 - 0.5) * 64, 0.2 + (i % 3) * 0.25, bz - 3.2 - r2 * 17, 1 + r2 * 1.5); }
+      ['#ff8fa8', '#ffb86b', '#ffe066', '#8fe0a0', '#7fc8ff', '#b79aff'].forEach((c, i) => { const m = new THREE.Mesh(torus(12 - i * 0.6), M(c)); m.position.set(0, 0.3, bz - 16); root.add(m); });
+      for (let i = 0; i < 9; i++) {
+        const x = (i - 4) * 4.6 + 1.2, y = 3.3 + (i % 3) * 0.9, z = bz - 4.5 - (i % 4) * 1.5, c = ['#ff9fb4', '#ffd66b', '#8fd0ff', '#c9b3ff'][i % 4];
+        const b = mesh(sph(0.34, 12, 10), M(c), x, y, z, root); b.scale.y = 1.2; b.castShadow = false; lanterns.push(b);
+        mesh(cyl(0.008, 0.008, 1.3, 4), M('#ffffff'), x, y - 1.05, z, root).castShadow = false;
+      }
     } else {
       box(0, -0.02, bz - 3.6, 160, 0.03, 3.2, M(e.road));
       for (let i = -14; i <= 14; i++) box(i * 2.4, -0.005, bz - 3.6, 1.1, 0.01, 0.12, M('#fffdf5'));
@@ -174,6 +189,16 @@ export function createWorld(canvas) {
     const plane = (w, d, x, z, tex) => { tex.repeat.set(w / 2, d / 2); const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), toon('#ffffff', { map: tex })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0, z); m.receiveShadow = true; root.add(m); };
     plane(6.8, 5.3 - zf, 0, (5.3 + zf) / 2, texK); plane(hw * 2, zf - sh.bz, 0, (zf + sh.bz) / 2, texL);
     if (tier >= 4) { const c = box(0, 0.008, (sh.bz - 2.9) / 2 - 0.2, 1.5, 0.016, -2.9 - sh.bz - 1.2, th.accent); c.castShadow = false; for (const s of [-1, 1]) box(s * 0.82, 0.01, (sh.bz - 2.9) / 2 - 0.2, 0.07, 0.02, -2.9 - sh.bz - 1.2, GOLD); }
+    // 厨房地垫
+    { const a = box(0, 0.006, 2.3, 3.0, 0.012, 2.1, th.accent); a.castShadow = false; const b = box(0, 0.008, 2.3, 2.74, 0.014, 1.84, CREAM); b.castShadow = false; }
+    // 高级店面：侧墙壁灯、大厅地面徽章
+    if (tier >= 3) for (const s of [-1, 1]) for (let z = -4.3; z > sh.bz + 1.2; z -= 2.8) {
+      mesh(rbox(0.06, 0.22, 0.14, 0.02), GOLD, s * (hw - 0.04), 1.92, z, root);
+      mesh(sph(0.09, 10, 8), M('#fff6cf', { emissive: '#ffdf8a', emissiveIntensity: 0.9 }), s * (hw - 0.13), 2.05, z, root).castShadow = false;
+    }
+    if (tier >= 6) for (const z of tier >= 7 ? [-6.6, (sh.bz - 6.6) / 2, sh.bz + 3.2] : [-6.6, sh.bz + 3.2]) {
+      [[1.05, GOLD, 0.02], [0.92, th.accent, 0.022], [0.62, CREAM, 0.024], [0.3, GOLD, 0.026]].forEach(([r, m, y]) => { const d = mesh(cyl(r, r, 0.012, 36), m, 0, y, z, root); d.castShadow = false; });
+    }
     // 后墙（门 + 窗）
     const pillar = (s, a, b) => box(s * (a + b) / 2, H / 2, bz, b - a, H, 0.22);
     let lastP = 3.05;
@@ -202,23 +227,49 @@ export function createWorld(canvas) {
     { const c = document.createElement('canvas'); c.width = 640; c.height = 160; const x = c.getContext('2d');
       x.fillStyle = '#fff7fa'; x.fillRect(0, 0, 640, 160); x.textAlign = 'center'; x.textBaseline = 'middle';
       x.font = '900 78px ui-rounded,"PingFang SC","Microsoft YaHei",sans-serif'; x.fillStyle = '#ff6f96'; x.fillText('啵啵奶茶铺', 320, 62);
-      x.font = '34px sans-serif'; x.fillStyle = '#ffb300'; x.fillText('★'.repeat(tier) + '☆'.repeat(5 - tier), 320, 128);
+      x.font = '34px sans-serif'; x.fillStyle = '#ffb300'; x.fillText('★'.repeat(tier) + '☆'.repeat(Math.max(0, 5 - tier)), 320, 128);
       const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; const sw = 2.6 + tier * 0.35;
       mesh(rbox(sw + 0.2, sw / 4 + 0.2, 0.14, 0.06), th.accent, 0, H + sw / 8 + 0.12, bz, root);
       const p = new THREE.Mesh(new THREE.PlaneGeometry(sw, sw / 4), new THREE.MeshBasicMaterial({ map: t })); p.position.set(0, H + sw / 8 + 0.12, bz + 0.08); root.add(p);
       for (let i = -7; i <= 7; i++) { const a = box(i * 0.42, 2.42, bz - 0.55, 0.42, 0.06, 0.95, i % 2 ? CREAM : th.accent, true); a.rotation.x = -0.35; }
+      if (tier >= 4) { // 屋顶奶茶杯吉祥物
+        const g = new THREE.Group(); g.position.set(sw / 2 + 1.0, H, bz); g.scale.setScalar(tier >= 6 ? 1.35 : 1); root.add(g);
+        mesh(cyl(0.46, 0.33, 1.0, 20), M('#fff6ee'), 0, 0.5, 0, g); mesh(cyl(0.405, 0.335, 0.5, 20), M('#e2a878'), 0, 0.27, 0.004, g);
+        mesh(cyl(0.5, 0.5, 0.07, 20), th.accent, 0, 1.03, 0, g);
+        const st = mesh(cyl(0.05, 0.05, 0.9, 8), M('#ff7d95'), 0.14, 1.4, 0, g); st.rotation.z = -0.2;
+        for (const s of [-1, 1]) { const e = mesh(sph(0.055, 10, 8), M('#3a2a2a'), s * 0.15, 0.68, 0.41, g); e.scale.set(1, 1.3, 0.5); const b = mesh(sph(0.07, 8, 6), M('#ff9aa8'), s * 0.26, 0.58, 0.39, g); b.scale.set(1, 0.6, 0.4); }
+        for (let i = 0; i < 5; i++) mesh(sph(0.06, 8, 6), M('#3a2418'), -0.2 + i * 0.1, 0.12 + (i % 2) * 0.07, 0.3 - Math.abs(i - 2) * 0.03, g);
+      }
+      if (tier >= 5) for (const s of [-1, 1]) { mesh(cone(0.2, 0.5, 4), GOLD, s * (hw + 0.11), H + 0.25, bz, root).rotation.y = Math.PI / 4; mesh(sph(0.09, 8, 6), GOLD, s * (hw + 0.11), H + 0.56, bz, root); }
+      if (tier >= 6) for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
+        const c = ['#ff9fb4', '#ffd66b', '#8fd0ff', '#c9b3ff'][(i + (s > 0 ? 2 : 0)) % 4], x = s * (sw / 2 + 2.4 + (i % 2) * 0.45), y = H + 1.2 + i * 0.32;
+        const b = mesh(sph(0.26, 12, 10), M(c), x, y, bz - 0.1 * i, root); b.scale.y = 1.2; b.castShadow = false;
+        mesh(cyl(0.006, 0.006, y - H, 4), M('#ffffff'), x, (y + H) / 2 - 0.25, bz - 0.1 * i, root).castShadow = false;
+      }
+      if (tier >= 7) for (const s of [-1, 1]) { // 城堡塔楼
+        const x = s * (hw + 0.25);
+        mesh(cyl(0.62, 0.68, 4.1, 20), th.wall, x, 2.05, bz, root); mesh(cyl(0.72, 0.72, 0.16, 20), GOLD, x, 4.15, bz, root);
+        mesh(cone(0.84, 1.4, 20), th.accent, x, 4.92, bz, root); mesh(sph(0.11, 8, 6), GOLD, x, 5.68, bz, root);
+        const w = mesh(rbox(0.3, 0.5, 0.06, 0.1), M('#fff6cf', { emissive: '#ffdf8a', emissiveIntensity: 0.8 }), x, 3.1, bz + 0.64, root); w.castShadow = false;
+      }
     }
     buildEnv(sceneId, hw, sh.bz);
 
     // 大厅桌椅
-    for (const [x, z] of L.TABLES) {
+    L.TABLES.forEach(([x, z], ti) => {
       mesh(cyl(0.58, 0.58, 0.07, 28), CREAM, x, 0.74, z, root); mesh(cyl(0.07, 0.09, 0.7, 10), WOOD, x, 0.36, z, root); mesh(cyl(0.3, 0.34, 0.05, 16), WOOD, x, 0.025, z, root);
-      mesh(cyl(0.07, 0.06, 0.12, 10), M('#ffffff'), x + 0.1, 0.83, z, root); mesh(sph(0.07, 8, 6), M('#ff9fb4'), x + 0.1, 0.94, z, root); mesh(sph(0.05, 8, 6), M('#8fd694'), x + 0.15, 0.9, z + 0.04, root);
+      mesh(cyl(0.6, 0.6, 0.02, 28), th.accent, x, 0.7, z, root).castShadow = false;
+      mesh(cyl(0.07, 0.06, 0.12, 10), M('#ffffff'), x + 0.1, 0.83, z, root).castShadow = false; mesh(sph(0.07, 8, 6), M(['#ff9fb4', '#ffd66b', '#c9b3ff'][ti % 3]), x + 0.1, 0.94, z, root).castShadow = false; mesh(sph(0.05, 8, 6), M('#8fd694'), x + 0.15, 0.9, z + 0.04, root).castShadow = false;
+      if (ti % 2) { const c = mesh(rbox(0.16, 0.13, 0.02, 0.008), M('#fff'), x - 0.2, 0.84, z + 0.05, root); c.rotation.x = -0.35; c.castShadow = false; mesh(rbox(0.12, 0.03, 0.022, 0.008), th.accent, x - 0.2, 0.87, z + 0.052, root).rotation.x = -0.35; }
+      else { mesh(cyl(0.12, 0.12, 0.012, 14), M('#ffffff'), x - 0.2, 0.782, z, root).castShadow = false; mesh(cyl(0.07, 0.07, 0.06, 12), M('#ffe3a8'), x - 0.2, 0.818, z, root).castShadow = false; mesh(sph(0.025, 6, 5), M('#ff5d7a'), x - 0.2, 0.862, z, root).castShadow = false; }
       const cord = mesh(cyl(0.012, 0.012, 0.6, 5), M('#b9a79a'), x, 2.75, z, root); cord.castShadow = false;
       const shd = mesh(cone(0.3, 0.28, 16), tier >= 4 ? GOLD : th.accent, x, 2.4, z, root); shd.castShadow = false;
       mesh(sph(0.1, 10, 8), M('#fff6cf', { emissive: '#ffdf8a', emissiveIntensity: 0.9 }), x, 2.27, z, root).castShadow = false;
+    });
+    for (const s of L.SEATS) {
+      mesh(cyl(0.24, 0.2, 0.4, 16), WOOD, s.x, 0.2, s.z, root); mesh(cyl(0.26, 0.26, 0.08, 16), th.accent, s.x, 0.43, s.z, root);
+      const d = s.r === 0 ? -0.27 : 0.27; mesh(rbox(0.5, 0.36, 0.07, 0.035), th.accent, s.x, 0.74, s.z + d, root); mesh(rbox(0.05, 0.3, 0.05, 0.02), WOOD, s.x, 0.5, s.z + d, root).castShadow = false;
     }
-    for (const s of L.SEATS) { mesh(cyl(0.24, 0.2, 0.4, 16), WOOD, s.x, 0.2, s.z, root); mesh(cyl(0.26, 0.26, 0.08, 16), th.accent, s.x, 0.43, s.z, root); }
 
     // 吧台
     const cx = -1.1, sx = L.SLOTS.map((p) => p[0]), n = sx.length;
@@ -290,6 +341,7 @@ export function createWorld(canvas) {
       W.sealHead = mesh(rbox(0.36, 0.1, 0.36, 0.03), M('#8b86a0'), 0, TOP + 0.66, 0.02, g);
       mesh(sph(0.04, 8, 6), M('#7bd389', { emissive: '#7bd389', emissiveIntensity: 0.8 }), 0.25, TOP + 0.76, 0.29, g);
       W.sealCup = makeCup(); W.sealCup.position.set(0, TOP + 0.14, 0.02); W.sealCup.visible = false; g.add(W.sealCup);
+      const roll = mesh(cyl(0.09, 0.09, 0.5, 14), M('#ffd0dc'), 0, TOP + 0.93, -0.12, g); roll.rotation.z = Math.PI / 2; mesh(cyl(0.1, 0.1, 0.03, 14), CREAM, 0.27, TOP + 0.93, -0.12, g).rotation.z = Math.PI / 2; mesh(cyl(0.1, 0.1, 0.03, 14), CREAM, -0.27, TOP + 0.93, -0.12, g).rotation.z = Math.PI / 2;
       addStation('sealer', '封口机', '⚡', g, 3.0, 3.6, -Math.PI / 2); }
     { const g = baseCab();
       mesh(rbox(1.3, 0.2, 0.7, 0.06), M('#bfe6ff'), 0, TOP + 0.1, 0, g); mesh(rbox(1.14, 0.06, 0.56, 0.03), M('#8fbfe6'), 0, TOP + 0.19, 0, g);
@@ -304,6 +356,15 @@ export function createWorld(canvas) {
       for (let i = 0; i < 3; i++) mesh(cyl(0.15, 0.15, 0.012, 18), CREAM, -0.4 + i * 0.4, TOP + 0.045, 0, g);
       W.shelfG = new THREE.Group(); g.add(W.shelfG);
       addStation('shelf', '备餐台', '🗄️', g, 1.5, 4.75, Math.PI, 1.55); }
+    { // 外卖柜：店员把线上订单放到这里
+      const g = new THREE.Group();
+      mesh(rbox(1.1, 1.36, 0.46, 0.06), th.cab, 0, 0.68, 0, g); mesh(rbox(0.96, 0.4, 0.3, 0.03), CREAM, 0, 0.98, 0.1, g); mesh(rbox(0.96, 0.4, 0.3, 0.03), CREAM, 0, 0.5, 0.1, g);
+      mesh(rbox(1.16, 0.08, 0.52, 0.03), CREAM, 0, 1.4, 0, g); mesh(rbox(0.7, 0.2, 0.05, 0.02), M('#3fa7ff'), 0, 1.56, 0.12, g);
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.16), new THREE.MeshBasicMaterial({ map: emojiTex('🛵', '#3fa7ff', 64) })); p.scale.x = 0.3; p.position.set(0, 1.56, 0.15); g.add(p);
+      mesh(sph(0.035, 8, 6), M('#7bd389', { emissive: '#7bd389', emissiveIntensity: 0.9 }), 0.44, 1.2, 0.235, g);
+      W.pickG = new THREE.Group(); g.add(W.pickG);
+      addStation('pickup', '外卖柜', '🛵', g, 3.14, -1.55, -Math.PI / 2, 1.9);
+    }
     L.SLOTS.forEach(([x], i) => { const st = { id: 'slot' + i, slot: i, x, z: -1.2, ly: 0, hidden: true, fx: x, fz: -0.5 }; W.stations.push(st); W.st[st.id] = st; });
 
     // 装饰
@@ -406,6 +467,11 @@ export function createWorld(canvas) {
   W.remove = (o) => { scene.remove(o); };
   W.giveCup = (chibi, items, sealed = true) => { W.dropCup(chibi); const c = makeCup(); c.userData.set(items, sealed); c.position.set(0, 0.6, 0.4); chibi.userData.inner.add(c); chibi.userData.cup = c; };
   W.dropCup = (chibi) => { const c = chibi.userData.cup; if (c) { c.userData.dispose(); c.removeFromParent(); chibi.userData.cup = null; } };
+  const picks = [];
+  W.dropPick = (items) => {
+    for (const p of picks) if (p.t > 0.3 && picks.length >= 3) p.t = 0.3;
+    const m = makeCup(); m.userData.set(items, true); m.position.set(-0.32 + (picks.length % 3) * 0.32, 1.44, -0.06); W.pickG.add(m); picks.push({ m, t: 3.2, g: W.pickG });
+  };
   W.addCoin = (x, z) => { const m = mesh(cyl(0.13, 0.13, 0.035, 16), M('#ffd23f', { emissive: '#ffb300', emissiveIntensity: 0.35 }), x, 0.95, z, scene); m.rotation.x = Math.PI / 2; return m; };
   const v = new THREE.Vector3();
   W.project = (x, y, z) => { v.set(x, y, z).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight, v.z < 1]; };
@@ -417,6 +483,7 @@ export function createWorld(canvas) {
     const un = G.unlocked();
     for (const id in parts) parts[id].visible = un.has(id);
     const sh = (S.up.shelf || 0) > 0; W.st.shelf.g.visible = sh; W.st.shelf.off = !sh;
+    const pk = S.shop >= 2 && (S.up.hire || 0) > 0; W.st.pickup.g.visible = pk; W.st.pickup.off = !pk;
     cat.visible = (S.up.cat || 0) > 0;
     for (const d in decor) decor[d].visible = !!S.decor[d];
     if (themeId !== S.theme) setTheme(S.theme);
@@ -461,6 +528,7 @@ export function createWorld(canvas) {
     lanterns.forEach((m, i) => { m.position.y += Math.sin(t * 1.5 + i) * 0.0015; });
     if (W.paw && decor.gold.visible) W.paw.position.y = 0.42 + Math.sin(t * 4) * 0.04;
     if (fall) { const a = fall.geometry.attributes.position, u = fall.userData; for (let i = 0; i < a.count; i++) { let y = a.getY(i) - dt * u.sp * (0.7 + (i % 5) * 0.12); if (y < 0) y += 10; a.setY(i, y); a.setX(i, a.getX(i) + Math.sin(t + i) * dt * 0.25); } a.needsUpdate = true; }
+    for (const p of [...picks]) { p.t -= dt; if (p.t < 0.3) p.m.scale.setScalar(Math.max(0.01, p.t / 0.3)); if (p.t <= 0 || p.g !== W.pickG) { p.m.userData.dispose(); p.m.removeFromParent(); picks.splice(picks.indexOf(p), 1); } }
     for (const c of R.coins) { c.mesh.rotation.z = t * 3; c.mesh.position.y = 0.95 + Math.sin(t * 4 + c.x) * 0.05; }
     for (const s of sparks) { const u = s.userData; if (u.life <= 0) continue; u.life -= dt; u.v.y -= dt * 5; s.position.addScaledVector(u.v, dt); s.scale.setScalar(0.12 + u.life * 0.3); s.material.opacity = Math.min(1, u.life * 2); s.material.rotation += dt * 3; if (u.life <= 0) s.visible = false; }
     for (const p of [...pulses]) { p.t += dt / 0.7; const k = Math.min(1, p.t), sc = 1 + Math.sin(k * Math.PI * 3) * 0.14 * (1 - k); p.o.scale.set(sc, 2 - sc, sc); if (k >= 1) { p.o.scale.setScalar(1); pulses.splice(pulses.indexOf(p), 1); } }
