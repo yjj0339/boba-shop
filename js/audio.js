@@ -8,7 +8,10 @@ export function initAudio() {
   ctx = new AC(); master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
   musicGain = ctx.createGain(); musicGain.gain.value = audio.musicOn ? 0.5 : 0; musicGain.connect(master);
   nextT = ctx.currentTime + 0.1; timer = setInterval(schedule, 100);
-  document.addEventListener('visibilitychange', () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else ctx.resume(); });
+  document.addEventListener('visibilitychange', () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else ctx.resume().catch(() => {}); });
+  // iPhone 锁屏/来电后音频会被系统打断，只能在下一次触摸时恢复
+  const wake = () => { if (ctx && ctx.state !== 'running' && !document.hidden) ctx.resume().catch(() => {}); };
+  document.addEventListener('pointerdown', wake, true); document.addEventListener('touchend', wake, true);
 }
 export function setMusic(on) { audio.musicOn = on; if (musicGain) musicGain.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, 0.2); }
 

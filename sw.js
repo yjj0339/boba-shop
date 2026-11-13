@@ -1,5 +1,5 @@
 // Service Worker：网络优先，离线时回退缓存（添加到主屏幕后没网也能玩）
-const VERSION = 'boba-v3';
+const VERSION = 'boba-v3.1';
 const ASSETS = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css', 'js/main.js', 'js/data.js', 'js/models.js', 'js/world.js', 'js/game.js', 'js/ui.js', 'js/audio.js', 'lib/three.module.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

@@ -164,7 +164,7 @@ export function frame(t) {
   // 时钟
   if (slow) {
     const p = R.phase === 'prep' ? 0 : Math.min(1, R.prog), m = Math.floor(600 + p * 720);
-    $('daytxt').textContent = `第${S.day}天 ${R.weather.emo} ${R.phase === 'prep' ? '准备中' : R.phase === 'closing' ? '打烊中' : `${Math.floor(m / 60)}:${String(m % 60 - m % 10).padStart(2, '0')}`}`;
+    $('daytxt').textContent = `第${S.day}天 ${R.weekend ? '🎪' : R.weather.emo} ${R.phase === 'prep' ? '准备中' : R.phase === 'closing' ? '打烊中' : `${Math.floor(m / 60)}:${String(m % 60 - m % 10).padStart(2, '0')}`}`;
     $('tprog').style.width = p * 100 + '%';
     $('tprog').style.background = R.rush > 1 ? 'linear-gradient(90deg,#ff9f6b,#ff5d6d)' : '';
   }
@@ -268,7 +268,7 @@ function renderSheet(keep) {
       for (const g of R.goals) h += `<div class="row"><div class="e">${g.done ? '✅' : '🎯'}</div><div class="m"><b>${g.text(g.target)}</b><small>进度 ${Math.min(g.target, Math.floor(R.today[g.type]))}/${g.target}</small></div><span class="btn ${g.done ? 'done' : 'g'}">💰${g.reward}</span></div>`;
       const hot = RECIPES.find((r) => r.id === R.hot);
       if (hot) h += `<div class="row next"><div class="e">🔥</div><div class="m"><b>今日爆款：${hot.name}</b><small>今天售价 ×1.5（💰${G.price(hot)}），点的人也更多，记得多备点料</small></div></div>`;
-      h += `<h3>生涯</h3><div class="grid2"><div class="cell">累计出杯<b>${fmt(S.stats.served)}</b></div><div class="cell">累计收入<b>${fmt(S.stats.earned)}</b></div><div class="cell">最高连击<b>${S.stats.bestCombo}</b></div><div class="cell">服务贵宾<b>${S.stats.vip}</b></div><div class="cell">狂热时刻<b>${S.stats.fever || 0}</b></div><div class="cell">外卖单<b>${S.stats.rider || 0}</b></div></div>`;
+      h += `<h3>生涯</h3><div class="grid2"><div class="cell">单日最高收入<b>${fmt(S.stats.bestDay || 0)}</b></div><div class="cell">单日最多出杯<b>${S.stats.bestServed || 0}</b></div><div class="cell">累计出杯<b>${fmt(S.stats.served)}</b></div><div class="cell">累计收入<b>${fmt(S.stats.earned)}</b></div><div class="cell">最高连击<b>${S.stats.bestCombo}</b></div><div class="cell">服务贵宾<b>${S.stats.vip}</b></div><div class="cell">狂热时刻<b>${S.stats.fever || 0}</b></div><div class="cell">外卖单<b>${S.stats.rider || 0}</b></div></div>`;
     } else if (taskTab === 'pal') {
       h += '<p class="sub">常客只喝自己最爱的那一款。每次完美出杯 +1 好感，每升一颗 ♥：一份谢礼、魅力 +1、付款再多 10%。</p>';
       for (const p of PALS) {
@@ -290,7 +290,9 @@ function renderSheet(keep) {
         · 🛵 外卖骑手一次要 2~3 杯同款；💗 常客只点自己最爱的<br>
         · 店里排满时客人会改下线上外卖单，空闲店员做好放进 🛵 外卖柜<br>
         · 第 5 天起设备偶尔会出故障，要老板亲自走过去修<br>
-        · 客人看到有人在做自己的单，耐心掉得更慢；排队太久的客人耐心更少</small></div></div>
+        · 客人看到有人在做自己的单，耐心掉得更慢；排队太久的客人耐心更少<br>
+        · 每 7 天一次 🎪 周末集市：客人更多、小费更高<br>
+        · 听不到声音？检查 iPhone 侧边的静音开关</small></div></div>
       <div class="row"><div class="m"><b>📱 添加到主屏幕</b><small>Safari 底部「分享」→「添加到主屏幕」，即可像 App 一样全屏游玩</small></div></div>
       <div class="row"><div class="m"><b>🗑️ 重新开始</b><small>清空存档，从第 1 天重来</small></div><button class="btn g" data-a="reset">清空存档</button></div>`;
   } else if (sheetName === 'level') {
@@ -307,6 +309,7 @@ function renderSheet(keep) {
     const d = sheetData;
     h = `<div class="center"><h2 style="justify-content:center">🌙 第 ${d.day} 天打烊</h2><div class="stars">${'⭐'.repeat(d.stars)}<span style="opacity:.25">${'⭐'.repeat(5 - d.stars)}</span></div>
       <p class="sub">${['', '手忙脚乱的一天，明天会更好', '有点吃力，试试升级设备', '稳稳当当！', '客人们都很满意！', '完美营业！口碑大涨！'][d.stars]}${d.bonus ? `　好评奖励 💰${d.bonus}` : ''}</p>
+      ${d.record || d.recServed ? `<p class="rec">🏅 新纪录！${d.record ? `单日收入 💰${fmt(d.income + d.tips)}` : ''}${d.record && d.recServed ? '　' : ''}${d.recServed ? `单日出杯 ${d.served} 杯` : ''}</p>` : ''}
       ${d.lost >= 3 ? `<p class="sub tipbox">💡 今天有 ${d.lost} 位客人等不及走了。${G.lv('hire') < SHOPS[S.shop - 1].staff ? '雇一位奶茶师' : '培训店员'}、升级跑鞋和等位区都能缓解；快撑不住时用 🍬 技能安抚。</p>` : ''}</div>
       <div class="grid2"><div class="cell">营业额<b>💰${fmt(d.income)}</b></div><div class="cell">小费<b>💰${fmt(d.tips)}</b></div><div class="cell">进货 + 工资<b>💰${fmt(d.cost + d.wages)}</b></div>${d.branch || d.staff ? `<div class="cell">分店分红<b>💰${fmt(d.branch)}</b></div><div class="cell">店员出杯<b>${d.staff}${d.online ? `<small style="font-size:11px;color:var(--ink2)"> 含外卖 ${d.online}</small>` : ""}</b></div>` : ''}<div class="cell">今日净赚<b style="color:${d.profit >= 0 ? '#2f9b62' : '#ff6b7d'}">💰${fmt(d.profit)}</b></div>
       <div class="cell">出杯 / 流失<b>${d.served} / ${d.lost}</b></div><div class="cell">连击 / 狂热<b>${d.bestCombo} / ${d.fever || 0}</b></div></div>

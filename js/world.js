@@ -23,6 +23,48 @@ const ENV = {
   night: { ground: '#66739a', walk: '#9b96b8', road: '#57526f', tree: ['#62b08a'], roof: '#8a7fd0', night: 1, lantern: 1 },
   cloud: { ground: '#eaf5ff', walk: '#ffffff', road: '#dcecff', tree: ['#ffc9de', '#cfe6ff', '#fff0b0', '#d9c8ff'], roof: '#ffb3c4', cloud: 1 },
 };
+// 静态合批：把容器里不会动的网格按材质合并成一个，绘制调用从几百降到几十（手机更省电、不发烫）
+// dyn 里的对象（会动、会显隐的部件）及其子孙保持原样
+const _inv = new THREE.Matrix4(), _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3();
+export function bake(container, dyn) {
+  container.updateMatrixWorld(true); _inv.copy(container.matrixWorld).invert();
+  const groups = new Map();
+  const walk = (o) => {
+    for (const c of o.children) {
+      if (dyn.has(c) || !c.visible) continue;
+      if (c.isMesh && !c.children.length && !Array.isArray(c.material) && !c.material.transparent && c.geometry.attributes.normal) {
+        const g = c.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
+        c.matrixWorld.decompose(_p, _q, _s);
+        if (c.castShadow && g.boundingSphere.radius * Math.max(Math.abs(_s.x), Math.abs(_s.y), Math.abs(_s.z)) < 0.09) c.castShadow = false; // 太小的物件不投影
+        _m.multiplyMatrices(_inv, c.matrixWorld); if (_m.determinant() <= 0) continue;
+        const k = c.material.uuid + (c.castShadow ? 'c' : '') + (c.receiveShadow ? 'r' : '') + (g.attributes.uv ? 'u' : '');
+        let l = groups.get(k); if (!l) groups.set(k, (l = [])); l.push([c, _m.clone()]);
+      } else if (!c.isMesh && !c.isSprite && !c.isPoints) walk(c);
+    }
+  };
+  walk(container);
+  let removed = 0;
+  for (const l of groups.values()) {
+    if (l.length < 2) continue;
+    let nv = 0, ni = 0; const uv = !!l[0][0].geometry.attributes.uv;
+    for (const [c] of l) { const g = c.geometry; nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+    const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), U = uv ? new Float32Array(nv * 2) : null, I = new Uint32Array(ni);
+    let vo = 0, io = 0;
+    for (const [c, m] of l) {
+      const g = c.geometry.clone(); g.applyMatrix4(m);
+      const p = g.attributes.position, n = g.attributes.normal, cnt = p.count;
+      for (let i = 0; i < cnt; i++) { const j = (vo + i) * 3; P[j] = p.getX(i); P[j + 1] = p.getY(i); P[j + 2] = p.getZ(i); N[j] = n.getX(i); N[j + 1] = n.getY(i); N[j + 2] = n.getZ(i); }
+      if (U) { const u = g.attributes.uv; for (let i = 0; i < cnt; i++) { U[(vo + i) * 2] = u.getX(i); U[(vo + i) * 2 + 1] = u.getY(i); } }
+      if (g.index) { const a = g.index.array; for (let i = 0; i < a.length; i++) I[io + i] = a[i] + vo; io += a.length; } else { for (let i = 0; i < cnt; i++) I[io + i] = vo + i; io += cnt; }
+      vo += cnt; g.dispose(); c.removeFromParent(); removed++;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(N, 3)); if (U) geo.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+    geo.setIndex(new THREE.BufferAttribute(I, 1)); geo.computeBoundingSphere();
+    const src = l[0][0], mm = new THREE.Mesh(geo, src.material); mm.castShadow = src.castShadow; mm.receiveShadow = src.receiveShadow; mm.userData.baked = 1; container.add(mm);
+  }
+  return removed;
+}
 const torus = (() => { const c = new Map(); return (r) => { let g = c.get(r); if (!g) { g = new THREE.TorusGeometry(r, 0.3, 8, 56, Math.PI); c.set(r, g); } return g; }; })();
 
 export function createWorld(canvas) {
@@ -175,7 +217,7 @@ export function createWorld(canvas) {
 
   // ---------- 建造 ----------
   W.build = (tier, sceneId) => {
-    if (root) { scene.remove(root); root.traverse((o) => { if (o.isPoints) o.geometry.dispose(); }); }
+    if (root) { scene.remove(root); root.traverse((o) => { if (o.isPoints || o.userData.baked || (o.geometry && (o.geometry.type === 'BoxGeometry' || o.geometry.type === 'PlaneGeometry'))) o.geometry.dispose(); }); }
     root = new THREE.Group(); scene.add(root);
     W.stations = []; W.st = {}; parts = {}; decor = {}; bulbs = []; fishes = null; W.tier = tier; W.sceneId = sceneId;
     const sh = SHOPS[tier - 1]; setLayout(sh);
@@ -432,6 +474,12 @@ export function createWorld(canvas) {
       for (const s of [-1, 1]) { const e = mesh(cone(0.05, 0.09, 4), GOLD, s * 0.08, 0.5, 0, g); e.rotation.y = Math.PI / 4; mesh(sph(0.018, 6, 5), M('#3a2a2a'), s * 0.05, 0.38, 0.125, g); }
       W.paw = mesh(sph(0.05, 8, 6), GOLD, 0.15, 0.42, 0.04, g); mesh(sph(0.03, 6, 5), M('#ff5d7a'), 0, 0.26, 0.14, g);
     });
+    // 合批：设备内部 → 装饰 → 整个场景（会动/会开关的部件除外）
+    const stDyn = new Set([...Object.values(parts), W.burner, W.potTop, W.steamPot, ...Object.values(W.steamTea), W.sealHead, W.sealCup, W.shelfG, W.pickG]);
+    for (const st of W.stations) if (st.g) bake(st.g, stDyn);
+    const dcDyn = new Set([...(fishes || []), ...bulbs, W.paw]);
+    for (const id in decor) bake(decor[id], dcDyn);
+    bake(root, new Set([...W.stations.map((s) => s.g).filter(Boolean), ...Object.values(decor), ...lanterns, ...cars, ...(fall ? [fall] : [])]));
     W.root = root;
     if (W.onBuild) W.onBuild();
   };

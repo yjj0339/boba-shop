@@ -236,3 +236,8 @@ body.tour #tourtip { display: block; }
 .hearts { color: #ff5d8f; letter-spacing: 1px; font-size: 13px; } .hearts i { color: #e6d8de; font-style: normal; }
 .tipbox { background: #fff6dc; border-radius: 12px; padding: 8px 10px; margin-top: 6px !important; color: #8a6a2a !important; text-align: left; }
 @media (orientation: landscape) and (max-height: 520px) { #toasts { top: calc(var(--st) + 10px); } #frow { min-height: 34px; } #skills button { width: 34px; height: 34px; font-size: 17px; } }
+
+/* ---------- v3.1：纪录徽章、横屏订单更窄 ---------- */
+.rec { display: inline-block; margin: 6px auto 2px; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 900; color: #b36b00; background: linear-gradient(135deg, #fff3c4, #ffe08a); box-shadow: 0 0 0 1.5px #ffcf4d, 0 6px 16px rgba(255, 190, 60, .35); animation: recpop .6s cubic-bezier(.3, 1.6, .5, 1) both; }
+@keyframes recpop { from { transform: scale(.4); opacity: 0; } }
+@media (orientation: landscape) and (max-height: 520px) { #top { width: 40%; } .oc { min-height: 56px; } }

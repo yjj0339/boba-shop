@@ -39,6 +39,8 @@ addEventListener('resize', () => W.resize()); addEventListener('orientationchang
 // ---------- 标题 ----------
 const startBtn = document.getElementById('start');
 if (S.had) startBtn.textContent = `继续营业 · 第 ${S.day} 天`;
+// iPhone Safari 里还没添加到主屏幕时，提示一下（全屏体验更好）
+if (/iP(hone|ad|od)/.test(navigator.userAgent) && !navigator.standalone && !matchMedia('(display-mode: standalone)').matches) document.getElementById('tip').textContent = '💡 点 Safari 的「分享」→「添加到主屏幕」，像 App 一样全屏玩';
 startBtn.addEventListener('click', () => {
   initAudio(); sfx('level');
   document.getElementById('title').hidden = true; document.getElementById('hud').hidden = false;
@@ -113,6 +115,27 @@ function camUpdate(dt) {
 }
 
 // ---------- 主循环 ----------
+// 自适应画质：持续掉帧就逐级降低渲染分辨率（手机不发烫、不卡顿）
+const PR = [2, 1.7, 1.45, 1.2, 1].filter((p) => p <= Math.min(2, devicePixelRatio || 1) + 0.01);
+let prI = 0, fpsT = 0, fpsN = 0, fpsSlow = 0, skip = 0;
+function adapt(raw) {
+  if (document.hidden || R.phase === 'title' || raw > 0.25) return; // 切后台回来的那一帧不算
+  fpsT += raw; fpsN++;
+  if (fpsT < 2.5) return;
+  const fps = fpsN / fpsT; fpsT = 0; fpsN = 0;
+  fpsSlow = fps < 42 ? fpsSlow + 1 : 0;
+  if (fpsSlow >= 2 && prI < PR.length - 1) { prI++; fpsSlow = 0; W.renderer.setPixelRatio(PR[prI]); W.resize(); }
+}
+if (PR.length) W.renderer.setPixelRatio(PR[0]);
+window.__quality = () => ({ pr: W.renderer.getPixelRatio(), steps: PR, i: prI });
+
+// 切到后台：立刻存档；回来时如果正在营业，先暂停，免得一回来客人就在催
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (R.phase !== 'title') G.save(); return; }
+  if ((R.phase === 'open' || R.phase === 'closing') && !R.paused) UI.openSheet('set');
+});
+addEventListener('pagehide', () => { if (R.phase !== 'title') G.save(); });
+
 let last = performance.now(), time = 0;
 function step(dt) {
   time += dt;
@@ -123,7 +146,10 @@ function step(dt) {
 }
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const raw = (now - last) / 1000, dt = Math.min(0.05, raw); last = now;
+  adapt(raw);
+  // 面板打开（游戏暂停）时降到约 20 帧，省电
+  if (R.paused && R.tour <= 0 && R.phase !== 'title' && (skip = (skip + 1) % 3) !== 0) { UI.frame(time); return; }
   step(dt);
   if (R.dirty) W.sync(S, R, G);
   W.update(dt, time, S, R, G);

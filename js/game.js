@@ -51,14 +51,14 @@ export const G = {
   charm: () => DECOR.reduce((a, d) => a + (S.decor[d.id] ? d.charm : 0), 0) + (Object.keys(S.scenes).length - 1) * 3 + (S.shop - 1) * 2 + PALS.reduce((a, p) => a + G.hearts(p.id), 0),
   priceMul: () => 1 + 0.06 * lv('quality') + Math.max(0, S.level - 24) * 0.01,
   price: (r) => Math.round(r.price * (1 + 0.12 * (S.rlv[r.id] || 0)) * G.priceMul() * (R.hot === r.id ? 1.5 : 1)),
-  tipMul: () => (1 + 0.2 * lv('tipjar')) * (1 + 0.03 * G.charm()) * R.weather.tip,
+  tipMul: () => (1 + 0.2 * lv('tipjar')) * (1 + 0.03 * G.charm()) * R.weather.tip * (R.weekend ? 1.3 : 1),
   // 难度曲线：前 3 周慢慢收紧（耐心 64 秒 → 46 秒，客流 0.7 → 1.25，之后缓慢增长），第 3 天起才有高峰
   ease: () => Math.min(1, (S.day - 1) / 20),
   patienceMax: () => (64 - 20 * G.ease()) * (1 - 0.025 * (S.shop - 1)) * (1 + 0.1 * lv('sofa')) * R.weather.pat,
   rushMul: () => (S.day < 3 ? 1 : 1.25 + 0.35 * Math.min(1, (S.day - 3) / 10)),
   arrivalGap() {
     const dayF = 0.7 + 0.55 * Math.min(1, (S.day - 1) / 14) + 0.45 * Math.min(1, Math.max(0, (S.day - 15) / 30));
-    const m = (0.62 + S.rep * 0.14) * (1 + 0.1 * lv('sign')) * (1 + 0.02 * G.charm()) * dayF * (1 + 0.22 * (S.shop - 1)) * R.weather.arr * R.rush * (R.buzz > 0 ? 1.5 : 1);
+    const m = (0.62 + S.rep * 0.14) * (1 + 0.1 * lv('sign')) * (1 + 0.02 * G.charm()) * dayF * (1 + 0.22 * (S.shop - 1)) * R.weather.arr * R.rush * (R.buzz > 0 ? 1.5 : 1) * (R.weekend ? 1.2 : 1);
     return Math.min(13, Math.max(0.7, 2.3 - S.shop * 0.25, 8.2 / m));
   },
   cost: (id) => Math.max(1, Math.round(SHOP[id].cost * (1 - 0.06 * lv('bulk')))),
@@ -112,8 +112,9 @@ export const G = {
     R.weather = S.day === 1 ? WEATHERS[0] : ws.find((w) => (tot -= w.w) < 0) || WEATHERS[0];
     const recs = G.recipes(), hot = S.day >= 2 ? pick(recs.filter((r) => r.lv >= S.level - 6)) : null;
     R.hot = hot ? hot.id : null;
-    const note = S.day === 1 ? '跟着 💡 提示和黄色箭头，做出第一杯奶茶吧' : S.day === 3 ? '从今天起有午高峰和晚高峰，客人会扎堆来' : R.weather.desc;
-    hooks.celebrate({ emo: R.weather.emo, title: `第 ${S.day} 天 · ${R.weather.name}`, sub: hot ? `🔥 今日爆款「${hot.name}」售价 ×1.5　${note}` : note, q: 1, quiet: 1 });
+    R.weekend = S.day % 7 === 0; // 每 7 天一次周末集市：客人更多、小费更高、贵客更爱来
+    const note = S.day === 1 ? '跟着 💡 提示和黄色箭头，做出第一杯奶茶吧' : S.day === 3 ? '从今天起有午高峰和晚高峰，客人会扎堆来' : R.weekend ? '🎪 周末集市：客人 +20%、小费 +30%，贵客也更爱来' : R.weather.desc;
+    hooks.celebrate({ emo: R.weekend ? '🎪' : R.weather.emo, title: `第 ${S.day} 天 · ${R.weekend ? '周末集市' : R.weather.name}`, sub: hot ? `🔥 今日爆款「${hot.name}」售价 ×1.5　${note}` : note, q: 1, quiet: 1 });
     G.genGoals(); dirty();
   },
   openDoor() {
@@ -166,6 +167,8 @@ export const G = {
     for (const c of R.coins) W.remove(c.mesh); R.coins = [];
     for (const b of R.staff) G.staffIdle(b);
     const sum = { day: S.day, ...t, stars, bonus, wasted, wages, branch, goals: R.goals.filter((g) => g.done).length, profit: t.income + t.tips + branch - t.cost - wages };
+    const gross = t.income + t.tips; sum.record = S.day > 2 && gross > (S.stats.bestDay || 0); S.stats.bestDay = Math.max(S.stats.bestDay || 0, gross);
+    if (t.served > (S.stats.bestServed || 0)) { sum.recServed = S.day > 2; S.stats.bestServed = t.served; }
     S.day++; R.phase = 'summary'; G.tick(); G.save(); hooks.sfx('level'); hooks.summary(sum);
   },
   nextDay() { R.phase = 'prep'; G.prepDay(); },
@@ -337,6 +340,7 @@ export const G = {
     else if (id === 'magic') {
       const t = (R.hint && R.hint.target) || R.slots.filter((c) => c && c.state === 'order' && !c.claim).sort((a, b) => a.patience - b.patience)[0];
       if (!t) { hooks.toast('现在没有要做的订单'); return; }
+      if (R.held && R.held.items.length && lv('shelf') > R.shelf.length) { R.shelf.push(R.held); hooks.toast('手上那杯先放到备餐台了'); }
       R.held = { items: [...t.order.items], sealed: true }; R.seal = null; R.pin = t; if (t.claim) G.staffIdle(t.claim);
     }
     R.skillCd[id] = s.cd; hooks.sfx('level'); W.burst(R.player.x, 1.5, R.player.z, 14); hooks.toast(`${s.emo} ${s.name}！`); dirty();
@@ -362,7 +366,7 @@ export const G = {
 
   // ---------- 顾客 ----------
   pickType() {
-    const k = 1 + 0.3 * (S.shop - 1) + G.charm() * 0.015;
+    const k = (1 + 0.3 * (S.shop - 1) + G.charm() * 0.015) * (R.weekend ? 1.5 : 1);
     const ts = CTYPES.filter((t) => (!t.lv || S.level >= t.lv) && (!t.shop || S.shop >= t.shop));
     const ws = ts.map((t) => (t.id === 'normal' ? t.w : t.w * k)); let x = ws.reduce((a, b) => a + b, 0) * Math.random();
     for (let i = 0; i < ts.length; i++) if ((x -= ws[i]) < 0) return ts[i];
