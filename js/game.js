@@ -1,5 +1,5 @@
 // 核心玩法：存档、制作、顾客、店员、经济、日循环
-import { ING, RECIPES, SHOP, UPGRADES, DECOR, THEMES, ACHS, SEQ, WEATHERS, SHOPS, CTYPES, BRANCHES, SCENES, HIRE_COST, RSTAR, PALS, PAL_HEART, SKILLS } from './data.js';
+import { ING, RECIPES, SHOP, UPGRADES, DECOR, THEMES, ACHS, SEQ, WEATHERS, SHOPS, CTYPES, BRANCHES, SCENES, HIRE_COST, RSTAR, PALS, PAL_HEART, SKILLS, CAMPAIGNS, TRAITS, CREW_NAMES, CREW_LV, RIVALS, RANK_PRIZE, LAB_LV } from './data.js';
 import { L } from './world.js';
 
 const KEY = 'boba-shop-save-v1';
@@ -9,7 +9,7 @@ let W = null;
 
 function fresh() {
   return {
-    v: 1, coins: 80, day: 1, level: 1, xp: 0, rep: 2.5, shop: 1, scene: 'town', scenes: { town: 1 }, rlv: {}, branch: {}, lastDay: '', streak: 0, pal: {}, lastTs: 0,
+    v: 1, coins: 80, day: 1, level: 1, xp: 0, rep: 2.5, shop: 1, scene: 'town', scenes: { town: 1 }, rlv: {}, branch: {}, lastDay: '', streak: 0, pal: {}, lastTs: 0, lab: {}, crew: [], rank: null,
     stock: { black: 3, milk: 20, pearl: 2 }, urn: {}, cooked: 0, up: {}, decor: {}, themes: { cream: 1 }, theme: 'cream',
     stats: { served: 0, earned: 0, bestCombo: 0, perfect: 0, vip: 0, tips: 0, lost: 0, horse: 0, staff: 0, fever: 0, rider: 0 }, ach: {}, set: { sfx: 1, music: 1, guide: 1, auto: 1 },
   };
@@ -51,22 +51,24 @@ export const G = {
   charm: () => DECOR.reduce((a, d) => a + (S.decor[d.id] ? d.charm : 0), 0) + (Object.keys(S.scenes).length - 1) * 3 + (S.shop - 1) * 2 + PALS.reduce((a, p) => a + G.hearts(p.id), 0),
   priceMul: () => 1 + 0.06 * lv('quality') + Math.max(0, S.level - 24) * 0.01,
   price: (r) => Math.round(r.price * (1 + 0.12 * (S.rlv[r.id] || 0)) * G.priceMul() * (R.hot === r.id ? 1.5 : 1)),
-  tipMul: () => (1 + 0.2 * lv('tipjar')) * (1 + 0.03 * G.charm()) * R.weather.tip * (R.weekend ? 1.3 : 1),
+  sell: (r) => Math.round(G.price(r) * ((G.camp() || {}).price || 1)), // 实际成交价（第二杯半价活动会打折）
+  tipMul: () => (1 + 0.2 * lv('tipjar')) * (1 + 0.03 * G.charm()) * R.weather.tip * (R.weekend ? 1.3 : 1) * ((G.camp() || {}).tip || 1),
+  camp: () => (R.camp ? CAMPAIGNS.find((c) => c.id === R.camp) : null),
   // 难度曲线：前 3 周慢慢收紧（耐心 64 秒 → 46 秒，客流 0.7 → 1.25，之后缓慢增长），第 3 天起才有高峰
   ease: () => Math.min(1, (S.day - 1) / 20),
   patienceMax: () => (64 - 20 * G.ease()) * (1 - 0.025 * (S.shop - 1)) * (1 + 0.1 * lv('sofa')) * R.weather.pat,
   rushMul: () => (S.day < 3 ? 1 : 1.25 + 0.35 * Math.min(1, (S.day - 3) / 10)),
   arrivalGap() {
     const dayF = 0.7 + 0.55 * Math.min(1, (S.day - 1) / 14) + 0.45 * Math.min(1, Math.max(0, (S.day - 15) / 30));
-    const m = (0.62 + S.rep * 0.14) * (1 + 0.1 * lv('sign')) * (1 + 0.02 * G.charm()) * dayF * (1 + 0.22 * (S.shop - 1)) * R.weather.arr * R.rush * (R.buzz > 0 ? 1.5 : 1) * (R.weekend ? 1.2 : 1);
+    const m = (0.62 + S.rep * 0.14) * (1 + 0.1 * lv('sign')) * (1 + 0.02 * G.charm()) * dayF * (1 + 0.22 * (S.shop - 1)) * R.weather.arr * R.rush * (R.buzz > 0 ? 1.5 : 1) * (R.weekend ? 1.2 : 1) * ((G.camp() || {}).arr || 1);
     return Math.min(13, Math.max(0.7, 2.3 - S.shop * 0.25, 8.2 / m));
   },
   cost: (id) => Math.max(1, Math.round(SHOP[id].cost * (1 - 0.06 * lv('bulk')))),
   xpNeed: () => Math.round(60 + S.level * 60 + S.level * S.level * 7),
   // 排队越久，轮到点单时越没耐心（第 3 天起逐渐生效）——队伍太长就该升级或雇人了
   queueF: () => 0.5 * Math.min(1, Math.max(0, (S.day - 2) / 12)),
-  recipes: () => RECIPES.filter((r) => r.lv <= S.level),
-  unlocked() { const s = new Set(); for (const r of RECIPES) if (r.lv <= S.level) r.items.forEach((i) => s.add(i)); return s; },
+  recipes: () => RECIPES.filter((r) => r.lv <= S.level && (!r.secret || S.lab[r.id])),
+  unlocked() { const s = new Set(); for (const r of RECIPES) if (r.lv <= S.level && !r.secret) r.items.forEach((i) => s.add(i)); return s; },
   avail: (id) => (ING[id].type === 'tea' ? S.urn[id] || 0 : id === 'pearl' ? S.cooked : id === 'ice' ? 99 : stockOf(id)),
   rank: () => shop().name,
   upCost(u) { return u.id === 'hire' ? HIRE_COST[lv('hire')] : Math.round(u.base * Math.pow(u.g, lv(u.id)) / 10) * 10; },
@@ -75,7 +77,7 @@ export const G = {
   branchIncome: () => BRANCHES.reduce((a, b) => a + b.inc * (S.branch[b.id] || 0), 0),
   wages: () => Math.round(lv('hire') * (25 + 15 * lv('hire')) * (1 + 0.25 * lv('train'))) + lv('waiter') * 40 + (lv('cat') ? 20 : 0),
   cupName(cup) {
-    const r = RECIPES.find((x) => x.items.length === cup.items.length && x.items.every((i) => cup.items.includes(i)));
+    const r = RECIPES.find((x) => (!x.secret || S.lab[x.id]) && x.items.length === cup.items.length && x.items.every((i) => cup.items.includes(i)));
     return r ? r.name : cup.items.length ? '特调' : '空杯';
   },
   lowStock() {
@@ -113,6 +115,7 @@ export const G = {
     const recs = G.recipes(), hot = S.day >= 2 ? pick(recs.filter((r) => r.lv >= S.level - 6)) : null;
     R.hot = hot ? hot.id : null;
     R.weekend = S.day % 7 === 0; // 每 7 天一次周末集市：客人更多、小费更高、贵客更爱来
+    R.camp = null; R.labMsg = ''; G.rankWeek();
     const note = S.day === 1 ? '跟着 💡 提示和黄色箭头，做出第一杯奶茶吧' : S.day === 3 ? '从今天起有午高峰和晚高峰，客人会扎堆来' : R.weekend ? '🎪 周末集市：客人 +20%、小费 +30%，贵客也更爱来' : R.weather.desc;
     hooks.celebrate({ emo: R.weekend ? '🎪' : R.weather.emo, title: `第 ${S.day} 天 · ${R.weekend ? '周末集市' : R.weather.name}`, sub: hot ? `🔥 今日爆款「${hot.name}」售价 ×1.5　${note}` : note, q: 1, quiet: 1 });
     G.genGoals(); dirty();
@@ -147,11 +150,11 @@ export const G = {
     S.xp += n; const got = [];
     while (S.xp >= G.xpNeed()) {
       S.xp -= G.xpNeed(); S.level++;
-      const before = new Set(); RECIPES.filter((r) => r.lv < S.level).forEach((r) => r.items.forEach((i) => before.add(i)));
-      const recs = RECIPES.filter((r) => r.lv === S.level);
+      const before = new Set(); RECIPES.filter((r) => r.lv < S.level && !r.secret).forEach((r) => r.items.forEach((i) => before.add(i)));
+      const recs = RECIPES.filter((r) => r.lv === S.level && !r.secret);
       for (const r of recs) for (const i of r.items) if (!before.has(i) && SHOP[i]) { S.stock[i] = stockOf(i) + SHOP[i].n * (ING[i].type === 'tea' ? 2 : 1); before.add(i); }
       const bonus = recs.length ? 0 : 100 + S.level * 30; S.coins += bonus;
-      got.push({ level: S.level, recs, bonus, skills: SKILLS.filter((s) => s.lv === S.level), pals: PALS.filter((p) => p.lv === S.level && S.level > 1) });
+      got.push({ level: S.level, recs, bonus, skills: SKILLS.filter((s) => s.lv === S.level), pals: PALS.filter((p) => p.lv === S.level && S.level > 1), camps: CAMPAIGNS.filter((c) => c.lv === S.level && c.lv > 1), lab: S.level === LAB_LV, secrets: RECIPES.filter((r) => r.secret && r.lv === S.level && S.level > LAB_LV).length });
     }
     if (got.length) { hooks.sfx('level'); hooks.confetti(); hooks.levelUp(got[got.length - 1]); }
   },
@@ -166,7 +169,15 @@ export const G = {
     if (!keep) { S.urn = {}; S.cooked = 0; } R.brew = {}; R.cook = null; R.feverT = 0; R.dash = 0; R.pin = null; hooks.fever(false);
     for (const c of R.coins) W.remove(c.mesh); R.coins = [];
     for (const b of R.staff) G.staffIdle(b);
-    const sum = { day: S.day, ...t, stars, bonus, wasted, wages, branch, goals: R.goals.filter((g) => g.done).length, profit: t.income + t.tips + branch - t.cost - wages };
+    const sum = { day: S.day, ...t, stars, bonus, wasted, wages, branch, goals: R.goals.filter((g) => g.done).length, profit: t.income + t.tips + branch - t.cost - wages, reviews: G.reviews(t, stars) };
+    // 街区排行榜：累计本周营业额，周末集市那天打烊结算
+    G.rankWeek(); S.rank.score += t.income + t.tips; S.stats.lastGross = t.income + t.tips;
+    if (S.day % 7 === 0) {
+      const pos = 1 + S.rank.riv.filter((v) => v > S.rank.score).length, prize = Math.round(S.rank.score * RANK_PRIZE[pos - 1] / 10) * 10;
+      S.coins += prize; if (pos === 1) S.rep = Math.min(5, S.rep + 0.15);
+      S.rank.best = S.rank.best ? Math.min(S.rank.best, pos) : pos; S.rank.done = pos;
+      sum.rank = { pos, prize, w: S.rank.w, score: S.rank.score };
+    }
     const gross = t.income + t.tips; sum.record = S.day > 2 && gross > (S.stats.bestDay || 0); S.stats.bestDay = Math.max(S.stats.bestDay || 0, gross);
     if (t.served > (S.stats.bestServed || 0)) { sum.recServed = S.day > 2; S.stats.bestServed = t.served; }
     S.day++; R.phase = 'summary'; G.tick(); G.save(); hooks.sfx('level'); hooks.summary(sum);
@@ -202,7 +213,10 @@ export const G = {
     if (id === 'hire' && lv('hire') >= shop().staff) { hooks.sfx('bad'); hooks.toast('店面站不下更多店员了，先扩建店铺吧'); return; }
     if (!G.pay(G.upCost(u))) return;
     S.up[id] = lv(id) + 1; hooks.sfx('level');
-    hooks.celebrate({ emo: u.emo, title: id === 'hire' ? `新奶茶师入职！` : `${u.name} Lv.${S.up[id]}`, sub: u.desc(S.up[id]) });
+    if (id === 'hire') {
+      G.fillCrew(); const c = S.crew[lv('hire') - 1], t = TRAITS[c.trait];
+      hooks.celebrate({ emo: '🧑‍🍳', title: `新奶茶师「${c.name}」入职！`, sub: `特长 ${t.emo}${t.name}：${t.desc}` });
+    } else hooks.celebrate({ emo: u.emo, title: `${u.name} Lv.${S.up[id]}`, sub: u.desc(S.up[id]) });
     if (FX[id]) W.pulse(FX[id]);
     G.syncStaff(); G.tick(); G.save();
   },
@@ -235,7 +249,7 @@ export const G = {
     G.genGoals(); G.tick(); G.save();
   },
   upRecipe(id) {
-    const r = RECIPES.find((x) => x.id === id), l = S.rlv[id] || 0; if (l >= 5 || r.lv > S.level) return;
+    const r = RECIPES.find((x) => x.id === id), l = S.rlv[id] || 0; if (l >= 5 || r.lv > S.level || (r.secret && !S.lab[id])) return;
     if (!G.pay(G.recCost(r))) return;
     S.rlv[id] = l + 1; hooks.sfx('level'); hooks.celebrate({ emo: '🧋', title: `${r.name} · ${RSTAR[l + 1]}`, sub: `研发升级！售价提升到 💰${G.price(r)}` }); G.tick(); G.save();
   },
@@ -272,10 +286,10 @@ export const G = {
   shelfTake(i) { if (R.held || !R.shelf[i]) return; R.held = R.shelf.splice(i, 1)[0]; hooks.sfx('pop'); dirty(); },
 
   // who: 'me' 亲手 | 'staff' 店员
-  payFor(c, perfect, who) {
+  payFor(c, perfect, who, crew) {
     const o = c.order, ty = c.type; let price = Math.round(o.price * ty.mul * (who === 'me' && R.feverT > 0 ? 1.5 : 1)), tip = 0;
     if (!perfect) price = Math.round(price * 0.4);
-    else tip = Math.round((price * (0.06 + 0.24 * c.patience / c.maxP) * G.tipMul() + (who === 'me' ? Math.min(5, Math.max(0, R.combo - 1) * 0.5) * G.priceMul() : 0)) * (who === 'me' ? 1 : 0.5));
+    else tip = Math.round((price * (0.06 + 0.24 * c.patience / c.maxP) * G.tipMul() + (who === 'me' ? Math.min(5, Math.max(0, R.combo - 1) * 0.5) * G.priceMul() : 0)) * (who === 'me' ? 1 : crew && crew.trait === 'charm' ? 0.9 : 0.5));
     S.coins += price + tip; S.stats.earned += price + tip; S.stats.served++; R.today.income += price; R.today.tips += tip; R.today.served++;
     if (perfect) { R.today.perfect++; S.stats.perfect++; S.rep = Math.min(5, S.rep + 0.012); } else { R.today.wrong++; S.rep = Math.max(0.5, S.rep - 0.08); }
     if (ty.mul >= 3) { S.stats.vip++; R.today.vip++; }
@@ -366,7 +380,7 @@ export const G = {
 
   // ---------- 顾客 ----------
   pickType() {
-    const k = (1 + 0.3 * (S.shop - 1) + G.charm() * 0.015) * (R.weekend ? 1.5 : 1);
+    const k = (1 + 0.3 * (S.shop - 1) + G.charm() * 0.015) * (R.weekend ? 1.5 : 1) * ((G.camp() || {}).vip || 1);
     const ts = CTYPES.filter((t) => (!t.lv || S.level >= t.lv) && (!t.shop || S.shop >= t.shop));
     const ws = ts.map((t) => (t.id === 'normal' ? t.w : t.w * k)); let x = ws.reduce((a, b) => a + b, 0) * Math.random();
     for (let i = 0; i < ts.length; i++) if ((x -= ws[i]) < 0) return ts[i];
@@ -385,11 +399,11 @@ export const G = {
       return;
     }
     const pals = S.day >= 2 ? PALS.filter((p) => p.lv <= S.level && !R.customers.some((c) => c.pal === p)) : [];
-    const pal = pals.length && Math.random() < 0.14 ? pick(pals) : null;
+    const pal = pals.length && Math.random() < 0.14 * ((G.camp() || {}).pal || 1) ? pick(pals) : null;
     const ty = pal ? { id: 'pal', name: pal.name, emo: pal.emo, mul: +(1.2 + 0.1 * G.hearts(pal.id)).toFixed(1), pat: 1.25 } : G.pickType();
     const kind = ty.id === 'horse' ? 'horse' : ty.id === 'office' || ty.id === 'star' || ty.id === 'rider' ? 'human' : pick(['human', 'human', 'human', 'bear', 'bunny', 'cat']);
     const look = pal ? pal.look : {
-      kind, crown: ty.id === 'rich', style: Math.floor(Math.random() * 5), shades: ty.id === 'star', tie: ty.id === 'office' ? '#ff7d95' : null, helmet: ty.id === 'rider' ? '#ffd23f' : null,
+      kind, crown: ty.id === 'rich', style: pick([0, 0, 1, 2, 3, 4, 5, 5, 6, 6]), shades: ty.id === 'star', tie: ty.id === 'office' ? '#ff7d95' : null, helmet: ty.id === 'rider' ? '#ffd23f' : null,
       skin: kind === 'horse' ? '#d9a066' : kind === 'human' ? pick(['#ffe2cc', '#ffd5b8', '#f3c9a5', '#e8b48c']) : kind === 'bear' ? pick(['#e2b185', '#c99a72', '#f3d9b8']) : kind === 'bunny' ? pick(['#ffffff', '#ffe3ec', '#e9e4f5']) : pick(['#ffcf8f', '#d9d9e3', '#f7e7d3']),
       hair: pick(['#6b4a3a', '#3f3340', '#c98a4b', '#f2c66d', '#e98fa6', '#8f7bd6']),
       outfit: ty.id === 'horse' ? '#2b2738' : ty.id === 'rich' ? '#ffd23f' : ty.id === 'rider' ? '#3fa7ff' : ty.id === 'office' ? pick(['#5d6f9c', '#6b6480', '#4f7a8c']) : ty.id === 'star' ? '#ff5d9e' : pick(['#8fd0ff', '#a5e6cc', '#ffd66b', '#c9b3ff', '#ffb38a', '#ff9fb4', '#9be0e0', '#ffffff']),
@@ -408,11 +422,11 @@ export const G = {
   },
   makeOrder(c) {
     const recs = G.recipes(), un = G.unlocked(), rich = c.type.mul >= 3;
-    const ws = recs.map((r) => (r.lv >= S.level - 2 ? 1.6 : 1) * (r.items.includes('ice') ? R.weather.ice : 1) * (rich ? r.price / 12 : 1) * (r.id === R.hot ? 2.5 : 1));
+    const ws = recs.map((r) => (r.lv >= S.level - 2 ? 1.6 : 1) * (r.secret ? 1.8 : 1) * (r.items.includes('ice') ? R.weather.ice : 1) * (rich ? r.price / 12 : 1) * (r.id === R.hot ? 2.5 : 1));
     let t = ws.reduce((a, b) => a + b, 0) * Math.random(), r = recs[0];
     for (let i = 0; i < recs.length; i++) if ((t -= ws[i]) < 0) { r = recs[i]; break; }
     const fav = c.pal && recs.find((x) => x.id === c.pal.fav); if (fav) r = fav;
-    const items = [...r.items]; let name = r.name, price = G.price(r);
+    const items = [...r.items]; let name = r.name, price = G.sell(r);
     const extra = [...un].filter((i) => ING[i].type === 'top' && !items.includes(i));
     if (S.level >= 4 && extra.length && items.filter((i) => ING[i].type === 'top').length < 2 && Math.random() < (rich ? 0.5 : 0.22)) { const e = pick(extra); items.push(e); name += `+${ING[e].name}`; price += Math.round(4 * G.priceMul()); }
     c.order = { items, name, price, rid: r.id, hot: r.id === R.hot };
@@ -461,7 +475,7 @@ export const G = {
           G.exit(c);
         }
       }
-      W.anim(c.mesh, dt, { moving, hold: !!c.mesh.userData.cup, sit: c.state === 'sit', happy: c.then === 'gone' && c.happy && moving, fret: c.state === 'order' && c.patience < c.maxP * 0.3 });
+      W.anim(c.mesh, dt, { moving, hold: !!c.mesh.userData.cup, sit: c.state === 'sit', happy: c.then === 'gone' && c.happy && moving, cheer: c.state === 'sit' && c.happy, fret: c.state === 'order' && c.patience < c.maxP * 0.3 });
     }
     for (let i = 0; i < R.slots.length; i++) if (!R.slots[i]) {
       const c = R.waits.filter((w) => w).sort((a, b) => a.id - b.id)[0]; if (!c) break;
@@ -475,13 +489,87 @@ export const G = {
   },
 
   // ---------- 店员 ----------
+  // ---------- 奶茶师档案 ----------
+  newCrew() {
+    const used = new Set(S.crew.map((c) => c.name)), names = CREW_NAMES.filter((n) => !used.has(n));
+    return { name: names.length ? pick(names) : `店员${S.crew.length + 1}`, trait: pick(Object.keys(TRAITS)), xp: 0 };
+  },
+  fillCrew() { while (S.crew.length < lv('hire')) S.crew.push(G.newCrew()); },
+  crewLv: (c) => CREW_LV.filter((n) => c.xp >= n).length,
+  crewXp(b) {
+    const c = b.crew; if (!c) return;
+    const l0 = G.crewLv(c); c.xp++; const l1 = G.crewLv(c);
+    if (l1 > l0) { hooks.float(`🎉 ${c.name} Lv.${l1}`, [b.mesh.position.x, 2.6, b.mesh.position.z], 'combo'); hooks.toast(`🧑‍🍳 奶茶师${c.name}升到 Lv.${l1}，手脚更麻利了`); hooks.sfx('level'); }
+  },
+  // ---------- 宣传活动 ----------
+  campCost: (c) => Math.max(Math.round(c.base * (0.5 + 0.5 * S.shop) * G.priceMul() / 5) * 5, Math.round((S.stats.lastGross || 0) * c.pct / 5) * 5),
+  startCamp(id) {
+    const c = CAMPAIGNS.find((x) => x.id === id); if (!c || R.phase !== 'prep' || R.camp) return;
+    if (S.level < c.lv) { hooks.sfx('bad'); hooks.toast(`需要达到 Lv.${c.lv}`); return; }
+    if (!G.pay(G.campCost(c))) return;
+    R.camp = id; S.stats.camp = (S.stats.camp || 0) + 1; R.today.cost += G.campCost(c);
+    hooks.sfx('level'); hooks.celebrate({ emo: c.emo, title: `今日宣传：${c.name}`, sub: c.desc }); G.tick(); G.save(); dirty();
+  },
+  // ---------- 新品实验室 ----------
+  labCost: () => Math.round((40 + S.level * 10) * (0.6 + 0.4 * S.shop) / 5) * 5,
+  secrets: () => RECIPES.filter((r) => r.secret),
+  labTry(items) {
+    if (S.level < LAB_LV) return;
+    if (items.length < 2) { R.labMsg = '至少选 2 种原料再试做'; hooks.sfx('bad'); return; }
+    const same = (r) => r.items.length === items.length && r.items.every((i) => items.includes(i));
+    const known = RECIPES.find((r) => same(r) && (!r.secret || S.lab[r.id]));
+    if (known) { R.labMsg = known.lv <= S.level ? `这就是「${known.name}」嘛，菜单上已经有啦（不收费）` : `这是 Lv.${known.lv} 才会解锁的「${known.name}」（不收费）`; hooks.sfx('pop'); return; }
+    if (!G.pay(G.labCost())) return;
+    S.stats.lab = (S.stats.lab || 0) + 1;
+    const all = G.secrets(), cand = all.filter((r) => !S.lab[r.id] && r.lv <= S.level), hit = cand.find(same);
+    if (hit) {
+      S.lab[hit.id] = 1; R.labMsg = `🎉 研发成功：「${hit.name}」上架啦！`;
+      hooks.sfx('level'); hooks.celebrate({ emo: '🧪', title: `新品「${hit.name}」研发成功`, sub: `售价 💰${G.price(hit)}，客人会抢着尝鲜`, big: 1 });
+      G.addXp(40 + S.level * 4); G.tick(); G.save(); return;
+    }
+    if (!cand.length) { R.labMsg = '味道普普通通。当前等级的隐藏配方都研发完了，升级后再来吧'; G.save(); return; }
+    let best = null, bs = -99;
+    for (const r of cand) { const ok = items.filter((i) => r.items.includes(i)).length, sc = ok * 3 - (items.length - ok) - (r.items.length - ok); if (sc > bs) { bs = sc; best = r; } }
+    const ok = items.filter((i) => best.items.includes(i)).length, extra = items.length - ok;
+    R.labMsg = `🤔 最接近线索 #${all.indexOf(best) + 1}：它需要 ${best.items.length} 种原料，你猜对了 ${ok} 种${extra ? `，多放了 ${extra} 种` : ''}`;
+    hooks.sfx('pop'); G.save();
+  },
+  // ---------- 街区排行榜 ----------
+  weekOf: (d) => Math.floor((d - 1) / 7) + 1,
+  rankWeek() {
+    const w = G.weekOf(S.day);
+    if (S.rank && S.rank.w === w) return;
+    const last = S.rank ? S.rank.score : 0, best = S.rank ? S.rank.best : 0;
+    const base = Math.max(Math.round(3200 * Math.pow(1.5, Math.min(6, w - 1))), Math.round(last * 1.12));
+    S.rank = { w, score: 0, last, best, done: 0, riv: RIVALS.map((r) => Math.round(base * r.k / 10) * 10) };
+  },
+  // ---------- 顾客点评 ----------
+  reviews(t, stars) {
+    const pool = [], total = t.served + t.lost;
+    const add = (s, text) => pool.push({ emo: pick(['🐻', '🐰', '🐱', '🧑', '👩', '👦', '👧', '🧑‍💼', '🐶', '🦊']), who: pick(['奶茶续命人', '芋泥星人', '珍珠控', '下班就想喝', '五分糖选手', '路过的小熊', '隔壁学生党', '冰块要多', '打卡达人', '周末探店团']), s, text });
+    if (t.lost >= 3) add(2, pick(['排了好久的队，最后没等到就走了…', '人太多了，店员忙不过来的样子', '等太久啦，希望多招几个奶茶师']));
+    if (!t.lost && t.served >= 8) add(5, pick(['出杯好快！一点都不用等', '从点单到拿到奶茶不到一分钟，神速', '人很多但完全不用等，效率绝了']));
+    if (total && t.perfect / total > 0.9) add(5, pick(['每一杯都刚刚好，好喝到跺脚！', '甜度刚好，珍珠 Q 弹，会回购', '料给得很足，良心小店']));
+    if (t.wrong) add(3, pick(['拿错了一次，不过味道还行', '我点的不是这个…下次注意哦', '有一杯做错了，小遗憾']));
+    const hot = RECIPES.find((r) => r.id === R.hot); if (hot && t.served >= 5) add(5, `今日爆款「${hot.name}」名不虚传，排队也值了`);
+    if (t.fever) add(5, pick(['看老板狂热出杯，像在看表演', '店里节奏好快，看得我都兴奋了']));
+    if (t.staff >= 5 && S.crew.length) { const c = pick(S.crew.slice(0, lv('hire'))); add(5, `奶茶师${c.name}手速好快，还冲我笑了一下`); }
+    if (G.charm() >= 10) add(4, pick(['店里装修好可爱，随手一拍都出片', '环境很舒服，适合坐下来慢慢喝']));
+    if (R.weekend) add(5, '周末集市太热闹了，买了一杯又一杯');
+    const cp = { flyer: '在街上拿到传单就来了，没让我失望', half: '第二杯半价！和朋友一人一杯刚刚好', vlog: '跟着博主来打卡，果然很好喝', member: '会员日的小惊喜好贴心' }[R.camp]; if (cp) add(4, cp);
+    if (R.weather.id === 'rain') add(4, '下雨天来一杯，心情都变好了'); else if (R.weather.id === 'hot') add(4, '大热天的冰饮，简直是救命水');
+    if (!pool.length) add(Math.max(3, stars), pick(['味道不错，下次还来', '小店很温馨', '还可以，期待上新品']));
+    return pool.sort(() => Math.random() - 0.5).slice(0, 3);
+  },
+
   syncStaff() {
+    G.fillCrew();
     const n = Math.min(lv('hire'), shop().staff);
     while (R.staff.length < n) {
       const i = R.staff.length;
       const j = i % 6;
       const mesh = W.addChibi({ kind: i % 3 === 2 ? 'bear' : 'human', skin: ['#ffe2cc', '#f3c9a5', '#e2b185', '#ffd5b8', '#e8b48c', '#f3d9b8'][j], hair: ['#3f3340', '#c98a4b', '#6b4a3a', '#e98fa6', '#8f7bd6', '#f2c66d'][j], style: [2, 3, 0, 1, 2, 3][j], outfit: ['#a5e6cc', '#8fd0ff', '#ffd66b', '#c9b3ff', '#ffb38a', '#9be0e0', '#ff9fb4', '#d8f3dc'][i % 8], apron: true, visor: i % 3 === 2 ? null : ['#7fd1b0', '#6fb6f0', '#f0b840', '#a98fe8', '#f09868', '#70c8c8', '#f07898', '#8fd694'][i % 8] });
-      const b = { i, mesh, state: 'idle', plan: [], path: [], wait: 0, rest: 1 + i * 0.7, target: null, cup: null, speed: 2.4, home: { x: -1.25 + (i % 3) * 1.25, z: 2.9 + Math.floor(i / 3) * 0.75 } };
+      const b = { i, mesh, crew: S.crew[i], stepK: 1, state: 'idle', plan: [], path: [], wait: 0, rest: 1 + i * 0.7, target: null, cup: null, speed: 2.4, home: { x: -1.25 + (i % 3) * 1.25, z: 2.9 + Math.floor(i / 3) * 0.75 } };
       mesh.position.set(b.home.x, 0, b.home.z); R.staff.push(b);
     }
     if (lv('waiter') && !R.waiter) {
@@ -514,7 +602,9 @@ export const G = {
   updStaff(dt) {
     const tr = lv('train'), mine = R.pin || (R.held && R.hint ? R.hint.target : null);
     for (const b of R.staff) {
-      b.speed = 2.3 * (1 + 0.12 * tr);
+      const cr = b.crew, cl = cr ? G.crewLv(cr) : 1, tt = cr && cr.trait;
+      b.speed = 2.3 * (1 + 0.12 * tr) * (tt === 'fast' ? 1.15 : 1) * (1 + 0.06 * (cl - 1));
+      b.stepK = (tt === 'careful' ? 0.75 : 1) * (1 - 0.06 * (cl - 1));
       let moving = false;
       if (b.path.length) moving = G.walk(b, dt);
       if (b.state === 'idle') {
@@ -528,7 +618,7 @@ export const G = {
           } else if (R.online > 0 && S.shop >= 2 && R.phase === 'open') { // 没有堂食单：做线上外卖单
             const rs = G.recipes().filter((r) => G.canMake(r.items)), r = rs.length ? pick(rs) : null;
             if (r) {
-              R.online--; b.job = { items: r.items, price: Math.round(G.price(r) * 0.85) }; b.cup = []; b.state = 'work'; b.go = false;
+              R.online--; b.job = { items: r.items, price: Math.round(G.sell(r) * 0.85) }; b.cup = []; b.state = 'work'; b.go = false;
               b.plan = [{ st: 'cups' }, ...SEQ.filter((i) => r.items.includes(i)).map((i) => ({ st: ING[i].st, ing: i })), { st: 'sealer', seal: 1 }, { st: 'pickup', drop: 1 }];
               dirty();
             } else b.rest = 1;
@@ -538,7 +628,7 @@ export const G = {
       } else {
         const c = b.target;
         if (!b.job && (!c || c.state !== 'order')) { if (b.cup && b.cup.length) hooks.float('💦', [b.mesh.position.x, 2.2, b.mesh.position.z], 'emo'); G.staffIdle(b); }
-        else if (!b.go) { const st = W.st[b.plan[0].st]; b.path = [{ x: st.fx + (b.i % 2 ? 0.25 : -0.25) * (st.slot != null ? 0 : 1), z: st.fz }]; b.go = true; b.wait = b.plan[0].seal ? Math.max(0.3, G.sealTime()) : 0.8 * (1 - 0.1 * tr); }
+        else if (!b.go) { const st = W.st[b.plan[0].st]; b.path = [{ x: st.fx + (b.i % 2 ? 0.25 : -0.25) * (st.slot != null ? 0 : 1), z: st.fz }]; b.go = true; b.wait = b.plan[0].seal ? Math.max(0.3, G.sealTime()) : 0.8 * (1 - 0.1 * tr) * b.stepK; }
         else if (!b.path.length) {
           const step = b.plan[0], st = W.st[step.st];
           b.mesh.rotation.y = Math.atan2(st.x - b.mesh.position.x, st.z - b.mesh.position.z);
@@ -550,13 +640,13 @@ export const G = {
               S.coins += j.price; S.stats.earned += j.price; S.stats.served++; S.stats.staff++; S.stats.online = (S.stats.online || 0) + 1;
               R.today.income += j.price; R.today.served++; R.today.perfect++; R.today.staff++; R.today.online++;
               W.dropPick(j.items); hooks.sfx('coin'); hooks.float(`🛵 +${j.price}`, [st2.x, 2.5, st2.z], 'gain'); hooks.coin([st2.x, 1.8, st2.z], j.price);
-              G.addXp(3 + j.items.length); G.tick(); G.staffIdle(b); continue;
+              G.addXp(3 + j.items.length); G.crewXp(b); G.tick(); G.staffIdle(b); continue;
             }
             if (step.serve) {
-              const got = G.payFor(c, true, 'staff'); hooks.sfx('coin');
+              const got = G.payFor(c, true, 'staff', b.crew); hooks.sfx('coin'); G.crewXp(b);
               W.giveCup(c.mesh, c.order.items); c.happy = true;
               if (--c.left > 0) { c.claim = null; c.patience = Math.min(c.maxP, c.patience + c.maxP * 0.4); dirty(); } else G.leave(c, c.type.id !== 'rider');
-              if (R.feverT <= 0) R.fever = Math.min(0.99, R.fever + 0.015);
+              if (R.feverT <= 0) R.fever = Math.min(0.99, R.fever + 0.015 * (b.crew && b.crew.trait === 'spark' ? 3 : 1));
               G.addXp(4 + c.order.items.length); G.tick();
               b.target = null; G.staffIdle(b); continue;
             }

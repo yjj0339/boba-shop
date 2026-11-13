@@ -1,5 +1,5 @@
 // 3D 场景：可扩建的小店、设备、装饰、可切换的室外场景、光照与特效
-import { THREE, M, toon, mesh, rbox, cyl, sph, cone, GLASS, emojiTex, makeChibi, makeCup, animChibi } from './models.js';
+import { THREE, M, toon, mesh, rbox, cyl, sph, cone, GLASS, emojiTex, makeChibi, makeCup, animChibi, bake, disposeChibi } from './models.js';
 import { ING, THEMES, SHOPS } from './data.js';
 
 export const L = { SLOTS: [], WAITS: [], SEATS: [], TABLES: [], DOOR: [0, -8.7], WALK: [], OBST: [], hw: 3.4, bz: -9, tier: 1 };
@@ -23,48 +23,6 @@ const ENV = {
   night: { ground: '#66739a', walk: '#9b96b8', road: '#57526f', tree: ['#62b08a'], roof: '#8a7fd0', night: 1, lantern: 1 },
   cloud: { ground: '#eaf5ff', walk: '#ffffff', road: '#dcecff', tree: ['#ffc9de', '#cfe6ff', '#fff0b0', '#d9c8ff'], roof: '#ffb3c4', cloud: 1 },
 };
-// 静态合批：把容器里不会动的网格按材质合并成一个，绘制调用从几百降到几十（手机更省电、不发烫）
-// dyn 里的对象（会动、会显隐的部件）及其子孙保持原样
-const _inv = new THREE.Matrix4(), _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3();
-export function bake(container, dyn) {
-  container.updateMatrixWorld(true); _inv.copy(container.matrixWorld).invert();
-  const groups = new Map();
-  const walk = (o) => {
-    for (const c of o.children) {
-      if (dyn.has(c) || !c.visible) continue;
-      if (c.isMesh && !c.children.length && !Array.isArray(c.material) && !c.material.transparent && c.geometry.attributes.normal) {
-        const g = c.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
-        c.matrixWorld.decompose(_p, _q, _s);
-        if (c.castShadow && g.boundingSphere.radius * Math.max(Math.abs(_s.x), Math.abs(_s.y), Math.abs(_s.z)) < 0.09) c.castShadow = false; // 太小的物件不投影
-        _m.multiplyMatrices(_inv, c.matrixWorld); if (_m.determinant() <= 0) continue;
-        const k = c.material.uuid + (c.castShadow ? 'c' : '') + (c.receiveShadow ? 'r' : '') + (g.attributes.uv ? 'u' : '');
-        let l = groups.get(k); if (!l) groups.set(k, (l = [])); l.push([c, _m.clone()]);
-      } else if (!c.isMesh && !c.isSprite && !c.isPoints) walk(c);
-    }
-  };
-  walk(container);
-  let removed = 0;
-  for (const l of groups.values()) {
-    if (l.length < 2) continue;
-    let nv = 0, ni = 0; const uv = !!l[0][0].geometry.attributes.uv;
-    for (const [c] of l) { const g = c.geometry; nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
-    const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), U = uv ? new Float32Array(nv * 2) : null, I = new Uint32Array(ni);
-    let vo = 0, io = 0;
-    for (const [c, m] of l) {
-      const g = c.geometry.clone(); g.applyMatrix4(m);
-      const p = g.attributes.position, n = g.attributes.normal, cnt = p.count;
-      for (let i = 0; i < cnt; i++) { const j = (vo + i) * 3; P[j] = p.getX(i); P[j + 1] = p.getY(i); P[j + 2] = p.getZ(i); N[j] = n.getX(i); N[j + 1] = n.getY(i); N[j + 2] = n.getZ(i); }
-      if (U) { const u = g.attributes.uv; for (let i = 0; i < cnt; i++) { U[(vo + i) * 2] = u.getX(i); U[(vo + i) * 2 + 1] = u.getY(i); } }
-      if (g.index) { const a = g.index.array; for (let i = 0; i < a.length; i++) I[io + i] = a[i] + vo; io += a.length; } else { for (let i = 0; i < cnt; i++) I[io + i] = vo + i; io += cnt; }
-      vo += cnt; g.dispose(); c.removeFromParent(); removed++;
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(N, 3)); if (U) geo.setAttribute('uv', new THREE.BufferAttribute(U, 2));
-    geo.setIndex(new THREE.BufferAttribute(I, 1)); geo.computeBoundingSphere();
-    const src = l[0][0], mm = new THREE.Mesh(geo, src.material); mm.castShadow = src.castShadow; mm.receiveShadow = src.receiveShadow; mm.userData.baked = 1; container.add(mm);
-  }
-  return removed;
-}
 const torus = (() => { const c = new Map(); return (r) => { let g = c.get(r); if (!g) { g = new THREE.TorusGeometry(r, 0.3, 8, 56, Math.PI); c.set(r, g); } return g; }; })();
 
 export function createWorld(canvas) {
@@ -296,6 +254,48 @@ export function createWorld(canvas) {
       }
     }
     buildEnv(sceneId, hw, sh.bz);
+    // 店门前的小花园：白色栅栏、花坛、踏脚石、路灯、长椅、邮筒
+    { const PK = M('#fffaf2'), STONE = M('#ebe3d6'), SOIL = M('#8a6a52'), LEAF = M('#7cc98a'), POLE = M('#6b6480'), snow = sceneId === 'snow';
+      for (let x = -3.55; x <= 3.56; x += 0.39) {
+        if (Math.abs(x) < 0.75) continue;
+        mesh(rbox(0.08, 0.44, 0.05, 0.02), PK, x, 0.22, 5.78, root); const t = mesh(cone(0.058, 0.09, 4), PK, x, 0.485, 5.78, root); t.rotation.y = Math.PI / 4;
+      }
+      for (const s of [-1, 1]) for (const y of [0.15, 0.33]) mesh(rbox(2.85, 0.05, 0.03, 0.012), PK, s * 2.15, y, 5.75, root);
+      for (let i = 0; i < 5; i++) mesh(cyl(0.2 - (i % 2) * 0.03, 0.22, 0.035, 14), STONE, Math.sin(i * 1.9) * 0.12, 0.012, 5.62 + i * 0.5, root);
+      [-1, 1].forEach((s) => {
+        const bx = s * 2.05;
+        mesh(rbox(2.1, 0.24, 0.72, 0.05), WOOD, bx, 0.12, 6.45, root); mesh(rbox(1.96, 0.04, 0.6, 0.02), SOIL, bx, 0.245, 6.45, root);
+        for (let i = 0; i < 10; i++) {
+          const fx = bx - 0.82 + (i % 5) * 0.41 + (i > 4 ? 0.2 : 0), fz = 6.3 + (i > 4 ? 0.3 : 0), h = 0.16 + ((i * 7) % 3) * 0.05;
+          if (snow) { const b = mesh(sph(0.13, 10, 8), LEAF, fx, 0.32, fz, root); b.scale.y = 0.8; mesh(sph(0.1, 8, 6), PK, fx, 0.4, fz, root).scale.y = 0.5; continue; }
+          mesh(cyl(0.012, 0.012, h, 4), LEAF, fx, 0.26 + h / 2, fz, root);
+          const lf = mesh(sph(0.045, 6, 5), LEAF, fx + 0.04, 0.3, fz, root); lf.scale.set(1.4, 0.4, 0.7);
+          const c = ['#ff8fab', '#ffd66b', '#ffffff', '#c9b3ff', '#ff9f6b'][(i + (s > 0 ? 2 : 0)) % 5];
+          for (let k = 0; k < 5; k++) { const a = k * 1.2566; const p = mesh(sph(0.032, 6, 5), M(c), fx + Math.cos(a) * 0.035, 0.27 + h, fz + Math.sin(a) * 0.035, root); p.scale.y = 0.6; }
+          mesh(sph(0.022, 6, 5), M('#ffcf3f'), fx, 0.285 + h, fz, root);
+        }
+        // 路灯
+        const lx = s * 3.95; mesh(cyl(0.05, 0.07, 2.2, 8), POLE, lx, 1.1, 5.95, root); mesh(cyl(0.14, 0.14, 0.06, 10), POLE, lx, 0.03, 5.95, root);
+        mesh(sph(0.17, 12, 10), M('#fff6cf', { emissive: '#ffdf8a', emissiveIntensity: 0.9 }), lx, 2.3, 5.95, root).castShadow = false;
+        const cap = mesh(cone(0.24, 0.16, 12), POLE, lx, 2.5, 5.95, root); cap.castShadow = false;
+      });
+      // 长椅 + 邮筒 + 小灌木
+      { const bx = -2.1, bz2 = 7.45;
+        mesh(rbox(1.2, 0.07, 0.38, 0.03), WOOD, bx, 0.42, bz2, root); mesh(rbox(1.2, 0.28, 0.05, 0.03), WOOD, bx, 0.66, bz2 - 0.17, root);
+        for (const s of [-1, 1]) { mesh(rbox(0.06, 0.4, 0.34, 0.02), POLE, bx + s * 0.5, 0.21, bz2, root); }
+      }
+      mesh(cyl(0.035, 0.035, 0.9, 6), POLE, 1.25, 0.45, 5.98, root); mesh(rbox(0.3, 0.26, 0.38, 0.08), M('#ff7d95'), 1.25, 1.0, 5.98, root); mesh(rbox(0.16, 0.025, 0.02, 0.008), PK, 1.25, 1.05, 6.18, root);
+      for (const [x, z, r] of [[3.3, 7.2, 0.32], [2.9, 7.45, 0.24], [-3.4, 6.95, 0.28]]) { const b = mesh(sph(r, 12, 10), M('#8fd694'), x, r * 0.75, z, root); b.scale.y = 0.85; }
+    }
+    // 大厅两侧墙上的小置物架
+    for (const s of [-1, 1]) {
+      const x = s * (hw - 0.14), z = s < 0 ? -4.1 : Math.max(sh.bz + 1.6, -5.4);
+      mesh(rbox(0.2, 0.04, 1.1, 0.015), WOOD, x, 1.45, z, root);
+      for (const k of [-1, 1]) { const b = mesh(rbox(0.03, 0.12, 0.03, 0.01), WOOD, x + s * 0.06, 1.38, z + k * 0.42, root); b.castShadow = false; }
+      mesh(cyl(0.07, 0.055, 0.12, 10), M('#fff'), x, 1.53, z - 0.35, root); const pl = mesh(sph(0.1, 10, 8), M('#7cc98a'), x, 1.65, z - 0.35, root); pl.scale.y = 0.8;
+      mesh(cyl(0.05, 0.04, 0.16, 10), M(s < 0 ? '#ffd3dc' : '#cfe8ff'), x, 1.55, z, root); mesh(cyl(0.012, 0.012, 0.16, 4), M('#ff7d95'), x, 1.66, z, root);
+      mesh(rbox(0.08, 0.2, 0.14, 0.02), M(s < 0 ? '#ffd66b' : '#c9b3ff'), x, 1.57, z + 0.32, root);
+    }
 
     // 大厅桌椅
     L.TABLES.forEach(([x, z], ti) => {
@@ -512,7 +512,7 @@ export function createWorld(canvas) {
   // ---------- API ----------
   W.addChibi = (look) => { const c = makeChibi(look); scene.add(c); return c; };
   W.addCustomer = W.addChibi;
-  W.remove = (o) => { scene.remove(o); };
+  W.remove = (o) => { scene.remove(o); disposeChibi(o); };
   W.giveCup = (chibi, items, sealed = true) => { W.dropCup(chibi); const c = makeCup(); c.userData.set(items, sealed); c.position.set(0, 0.6, 0.4); chibi.userData.inner.add(c); chibi.userData.cup = c; };
   W.dropCup = (chibi) => { const c = chibi.userData.cup; if (c) { c.userData.dispose(); c.removeFromParent(); chibi.userData.cup = null; } };
   const picks = [];

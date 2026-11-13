@@ -47,7 +47,17 @@ export const RECIPES = [
   { id: 'goldoolong', name: '黄金芝士乌龙', lv: 22, price: 52, items: ['pudding', 'ice', 'oolong', 'milk', 'foam'] },
   { id: 'fruitparty', name: '莓果芝士多多', lv: 23, price: 56, items: ['jelly', 'ice', 'green', 'strawberry', 'mango', 'foam'] },
   { id: 'emperor', name: '帝王全家福', lv: 24, price: 68, items: ['pearl', 'pudding', 'taroball', 'black', 'brownsugar', 'milk', 'foam'] },
+  // 隐藏配方：要在「新品实验室」里照着线索试出来才会上架
+  { id: 'browncoco', name: '黑糖椰椰鲜奶', lv: 7, price: 28, secret: 1, items: ['jelly', 'brownsugar', 'milk'], hint: '焦香的糖浆遇上牛奶，再加一种白白嫩嫩、有嚼劲的小料' },
+  { id: 'strawoolong', name: '莓莓乌龙冰茶', lv: 8, price: 30, secret: 1, items: ['ice', 'oolong', 'strawberry'], hint: '一款焙火茶底 + 红红的水果 + 冰，不加奶' },
+  { id: 'matchacloud', name: '抹茶云顶', lv: 9, price: 32, secret: 1, items: ['matcha', 'milk', 'foam'], hint: '绿色的粉、白色的奶、头顶一朵云，不加冰' },
+  { id: 'taropud', name: '芋泥布丁啵啵', lv: 10, price: 34, secret: 1, items: ['pudding', 'taro', 'milk'], hint: '紫色的绵密 + 黄色的 Q 弹 + 奶' },
+  { id: 'lemongreen', name: '柠檬绿妍', lv: 11, price: 29, secret: 1, items: ['ice', 'green', 'lemon'], hint: '最清爽的茶底，配上酸酸的黄色水果和冰' },
+  { id: 'beanoolong', name: '红豆乌龙奶', lv: 14, price: 39, secret: 1, items: ['redbean', 'oolong', 'milk'], hint: '老人家最爱的豆子，配焙火茶和奶' },
+  { id: 'mangosmoothie', name: '芒果珍珠冰沙', lv: 15, price: 46, secret: 1, items: ['pearl', 'ice', 'mango', 'milk'], hint: '四样：最经典的小料、冰、热带水果、奶' },
+  { id: 'rainbow', name: '彩虹全家桶', lv: 20, price: 66, secret: 1, items: ['jelly', 'taroball', 'redbean', 'green', 'mango', 'foam'], hint: '六样！三种小料（不要珍珠和布丁）、清爽茶底、黄色水果、一朵云' },
 ];
+export const LAB_LV = 7;
 export const MAX_LV = 24;
 export const RSTAR = ['普通', '优选', '招牌', '臻选', '殿堂', '传奇'];
 
@@ -111,6 +121,31 @@ export const SCENES = [
   { id: 'cloud', name: '云端彩虹岛', emo: '🌈', cost: 120000, shop: 5 },
 ];
 export const HIRE_COST = [300, 1500, 6000, 18000, 45000, 110000, 300000, 700000];
+
+// 宣传活动：每天开门前可以选一个（当天有效）
+export const CAMPAIGNS = [
+  { id: 'flyer', name: '街头发传单', emo: '📰', day: 3, lv: 1, base: 40, pct: 0.08, desc: '客流 +25%', arr: 1.25 },
+  { id: 'half', name: '第二杯半价', emo: '🏷️', day: 3, lv: 5, base: 50, pct: 0.1, desc: '客流 +55%，但每杯售价 -15%', arr: 1.55, price: 0.85 },
+  { id: 'vlog', name: '网红探店', emo: '📸', day: 3, lv: 8, base: 110, pct: 0.13, desc: '贵客和博主翻倍，客流 +15%', arr: 1.15, vip: 2 },
+  { id: 'member', name: '会员日', emo: '💳', day: 3, lv: 11, base: 130, pct: 0.12, desc: '常客来得更勤，小费 +40%', pal: 2.5, tip: 1.4 },
+];
+
+// 奶茶师：每人一个名字和特长，出杯攒经验升级（最高 Lv.5）
+export const TRAITS = {
+  fast: { name: '快手', emo: '⚡', desc: '走路和动作快 15%' },
+  careful: { name: '细心', emo: '🔍', desc: '每步操作快 25%' },
+  charm: { name: '人气', emo: '💖', desc: '经手的单小费多 80%' },
+  spark: { name: '元气', emo: '🔥', desc: '每出一杯帮你攒 3 倍狂热' },
+};
+export const CREW_NAMES = ['小桃', '阿杰', '糯米', '栗子', '小满', '七七', '豆包', '阿柚', '可可', '年糕', '布布', '团子', '芝芝', '阿树'];
+export const CREW_LV = [0, 15, 60, 135, 240]; // 升到 Lv.2~5 需要的出杯数
+
+// 街区排行榜：每 7 天一届，周末集市当天打烊结算
+export const RIVALS = [
+  { name: '糖心铺子', emo: '🍬', k: 1.6 }, { name: '柠檬星球', emo: '🍋', k: 1.25 }, { name: '云朵茶舍', emo: '☁️', k: 1.0 },
+  { name: '泡泡实验室', emo: '🫧', k: 0.75 }, { name: '阿婆凉茶', emo: '🍵', k: 0.5 },
+];
+export const RANK_PRIZE = [0.2, 0.12, 0.07, 0.04, 0.02, 0.01];
 
 // 进货：n = 每次买到的份数；茶叶 1 包泡一桶，生珍珠 1 袋煮一锅
 export const SHOP = {
@@ -214,6 +249,11 @@ export const ACHS = [
   { id: 'branchall', name: '遍地开花', desc: '开齐 6 家分店', r: 100000, ok: (s) => Object.keys(s.branch || {}).length >= 6 },
   { id: 'star5', name: '传奇配方', desc: '把一款饮品研发到传奇', r: 3000, ok: (s) => Object.values(s.rlv || {}).some((v) => v >= 5) },
   { id: 'rep5', name: '五星口碑', desc: '口碑达到 4.9', r: 800, ok: (s) => s.rep >= 4.9 },
+  { id: 'lab1', name: '灵光一闪', desc: '在实验室研发出第一款隐藏配方', r: 500, ok: (s) => Object.keys(s.lab || {}).length >= 1 },
+  { id: 'laball', name: '首席研发官', desc: '研发出全部 8 款隐藏配方', r: 20000, ok: (s) => Object.keys(s.lab || {}).length >= 8 },
+  { id: 'rank1', name: '街区第一', desc: '在周排行榜拿到第 1 名', r: 2000, ok: (s) => s.rank && s.rank.best === 1 },
+  { id: 'camp10', name: '营销鬼才', desc: '累计做 10 次宣传活动', r: 800, ok: (s) => (s.stats.camp || 0) >= 10 },
+  { id: 'crew5', name: '金牌奶茶师', desc: '培养一位 Lv.5 奶茶师', r: 3000, ok: (s) => (s.crew || []).some((c) => c.xp >= 240) },
 ];
 
 export const RANKS = [[0, '街角小摊'], [30, '邻里小店'], [120, '人气茶铺'], [400, '网红名店'], [1000, '城市地标'], [2500, '奶茶传奇']];

@@ -1,12 +1,12 @@
 // 界面：HUD、3D 锚定标签、面板
 import { S, R, G, hooks } from './game.js';
-import { ING, RECIPES, SHOP, UPGRADES, DECOR, THEMES, ACHS, SEQ, SHOPS, BRANCHES, SCENES, RSTAR, PALS, PAL_HEART, SKILLS } from './data.js';
+import { ING, RECIPES, SHOP, UPGRADES, DECOR, THEMES, ACHS, SEQ, SHOPS, BRANCHES, SCENES, RSTAR, PALS, PAL_HEART, SKILLS, CAMPAIGNS, TRAITS, CREW_LV, RIVALS, RANK_PRIZE, LAB_LV } from './data.js';
 import { L } from './world.js';
 import { setMusic, audio, sfx } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 let W, curActions = [], actHtml = '', sheetName = null, sheetTab = 'shop', taskTab = 'goal', sheetData = null, lastSlow = 0, shown = -1, skHtml = '';
-const tags = [], bubs = new Map(), bars = [null, null, null];
+const tags = [], bubs = new Map(), bars = [null, null, null], labSel = new Set();
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
 const chip = (id, ok) => `<span class="ic${ok ? ' ok' : ''}">${ING[id].emo}<small>${ING[id].name}</small></span>`;
 const sorted = (items) => SEQ.filter((i) => items.includes(i));
@@ -35,6 +35,7 @@ export function initUI(w) {
   hooks.fever = (on) => { document.body.classList.toggle('fever', !!on); audio.tempo = on ? 1.18 : 1; };
   hooks.coin = coinFly;
   $('open').addEventListener('click', () => G.openDoor());
+  $('campbtn').addEventListener('click', () => { sfx('pop'); openSheet('camp'); });
   $('sheetwrap').addEventListener('click', (e) => {
     if (e.target === $('sheetwrap')) { if (sheetName !== 'summary') closeSheet(); return; }
     const b = e.target.closest('[data-a]'); if (!b) return;
@@ -46,6 +47,10 @@ export function initUI(w) {
     else if (a === 'theme') G.setTheme(x);
     else if (a === 'scene') { const was = S.scene; G.setScene(x); if (S.scene !== was && R.tour > 0) return closeSheet(); }
     else if (a === 'restock') G.restock();
+    else if (a === 'camp') { G.startCamp(x); if (R.camp) return closeSheet(); }
+    else if (a === 'lsel') { if (labSel.has(x)) labSel.delete(x); else if (labSel.size < 7) labSel.add(x); sfx('pop'); }
+    else if (a === 'lclear') labSel.clear();
+    else if (a === 'labtry') { const n = Object.keys(S.lab).length; G.labTry([...labSel]); if (Object.keys(S.lab).length > n) labSel.clear(); }
     else if (a === 'tour') { R.tour = 8; return closeSheet(); }
     else if (a === 'ttab') { taskTab = x; sfx('pop'); }
     else if (a === 'branch') G.buyBranch(x);
@@ -121,6 +126,8 @@ function renderHud() {
   $('lvtxt').textContent = `Lv.${S.level} ${G.rank()}`; $('xpfill').style.width = Math.min(100, S.xp / G.xpNeed() * 100) + '%';
   $('combo').textContent = R.combo >= 2 ? `🔥${R.combo}连击` : '';
   $('open').hidden = R.phase !== 'prep';
+  const cp = G.camp(); $('campbtn').hidden = R.phase !== 'prep' || S.day < 3;
+  $('campbtn').textContent = cp ? `${cp.emo} 今日：${cp.name}` : '📣 今日宣传（可选）'; $('campbtn').classList.toggle('on', !!cp);
   const low = G.lowStock(); $('lowbadge').textContent = low || '';
   const gl = R.goals.filter((g) => !g.done).length; $('goalbadge').textContent = R.phase === 'prep' && gl ? gl : '';
   // 订单卡
@@ -164,7 +171,7 @@ export function frame(t) {
   // 时钟
   if (slow) {
     const p = R.phase === 'prep' ? 0 : Math.min(1, R.prog), m = Math.floor(600 + p * 720);
-    $('daytxt').textContent = `第${S.day}天 ${R.weekend ? '🎪' : R.weather.emo} ${R.phase === 'prep' ? '准备中' : R.phase === 'closing' ? '打烊中' : `${Math.floor(m / 60)}:${String(m % 60 - m % 10).padStart(2, '0')}`}`;
+    $('daytxt').textContent = `第${S.day}天 ${R.weekend ? '🎪' : R.weather.emo}${G.camp() ? G.camp().emo : ''} ${R.phase === 'prep' ? '准备中' : R.phase === 'closing' ? '打烊中' : `${Math.floor(m / 60)}:${String(m % 60 - m % 10).padStart(2, '0')}`}`;
     $('tprog').style.width = p * 100 + '%';
     $('tprog').style.background = R.rush > 1 ? 'linear-gradient(90deg,#ff9f6b,#ff5d6d)' : '';
   }
@@ -247,7 +254,14 @@ function renderSheet(keep) {
         <button class="btn ${S.theme === t.id ? 'done' : S.themes[t.id] ? 'g' : S.coins < t.cost ? 'no' : ''}" style="margin-top:6px;width:100%" data-a="theme:${t.id}">${S.theme === t.id ? '使用中' : S.themes[t.id] ? '换上' : `💰${fmt(t.cost)}`}</button></div>`).join('') + '</div><h3>装饰摆件</h3>';
       for (const d of DECOR) { const lock = d.shop && S.shop < d.shop; h += `<div class="row${lock ? ' lock' : ''}"><div class="e">${d.emo}</div><div class="m"><b>${d.name}</b><small>魅力 +${d.charm}${lock ? `　需要「${SHOPS[d.shop - 1].name}」` : ''}</small></div>${S.decor[d.id] ? '<span class="btn done">已拥有</span>' : lock ? '<span class="btn no">🔒</span>' : buyBtn(`decor:${d.id}`, d.cost, '购买')}</div>`; }
     } else {
-      if (sheetTab === 'staff') h += `<p class="sub">员工工资每天打烊结算：今天 💰${fmt(G.wages())}　·　当前店面最多 ${SHOPS[S.shop - 1].staff} 位奶茶师</p>`;
+      if (sheetTab === 'staff') {
+        h += `<p class="sub">员工工资每天打烊结算：今天 💰${fmt(G.wages())}　·　当前店面最多 ${SHOPS[S.shop - 1].staff} 位奶茶师</p>`;
+        const crew = S.crew.slice(0, Math.min(G.lv('hire'), SHOPS[S.shop - 1].staff));
+        if (crew.length) h += '<h3>我的奶茶师</h3><div class="crew">' + crew.map((c) => {
+          const l = G.crewLv(c), t = TRAITS[c.trait], a = CREW_LV[l - 1], b = CREW_LV[l];
+          return `<div class="cc"><div class="cn">🧑‍🍳 <b>${c.name}</b><span class="lv">Lv.${l}</span></div><span class="trait">${t.emo} ${t.name}</span><small>${t.desc}</small><i class="xb"><u style="width:${b ? Math.round((c.xp - a) / (b - a) * 100) : 100}%"></u></i><small>${b ? `出杯 ${c.xp}/${b} 升级` : `出杯 ${c.xp} · 已满级`}</small></div>`;
+        }).join('') + '</div>';
+      }
       for (const u of UPGRADES.filter((x) => x.cat === sheetTab)) {
         const l = G.lv(u.id), max = l >= (u.id === 'hire' ? Math.min(u.max, SHOPS[S.shop - 1].staff) : u.max), c = max ? 0 : G.upCost(u);
         h += `<div class="row"><div class="e">${u.emo}</div><div class="m"><b>${u.name} <span class="dots">${'●'.repeat(l)}${'○'.repeat(u.max - l)}</span></b>
@@ -256,19 +270,49 @@ function renderSheet(keep) {
     }
   } else if (sheetName === 'menu') {
     h = head('📖 配方与研发', `取杯 → 小料 → 冰块 → 茶底 → 奶/果酱 → 奶盖 → 封口。研发一次售价 +12%　余额 💰${fmt(S.coins)}`);
+    h += S.level >= LAB_LV ? `<button class="btn big g" style="margin:0 0 10px" data-a="sheet:lab">🧪 新品实验室<small>照着线索搭配原料，研发隐藏配方（已研发 ${Object.keys(S.lab).length}/${G.secrets().length}）</small></button>` : `<p class="sub center">🧪 Lv.${LAB_LV} 解锁新品实验室，可以研发隐藏配方</p>`;
     for (const r of RECIPES) {
+      if (r.secret && !S.lab[r.id]) continue;
       const ok = r.lv <= S.level;
       const l = S.rlv[r.id] || 0;
       h += `<div class="row${ok ? '' : ' lock'}${r.id === R.hot ? ' next' : ''}"><div class="e">${ok ? (r.id === R.hot ? '🔥' : '🧋') : '🔒'}</div><div class="m"><b>${r.name} ${ok ? `<span class="rs r${l}">${RSTAR[l]}</span>` : ''}${r.id === R.hot ? ' <span class="rs r4">今日爆款 ×1.5</span>' : ''}</b>${ok ? `<div class="chips">${sorted(r.items).map((i) => chip(i)).join('')}</div><small>售价 💰${G.price(r)}　<span class="dots">${'★'.repeat(l)}${'☆'.repeat(5 - l)}</span></small>` : `<small>Lv.${r.lv} 解锁</small>`}</div>${!ok ? `<b>💰${G.price(r)}</b>` : l >= 5 ? '<span class="btn done">传奇</span>' : buyBtn(`rec:${r.id}`, G.recCost(r), '研发', `💰${fmt(G.recCost(r))}`)}</div>`;
     }
+  } else if (sheetName === 'camp') {
+    const cp = G.camp();
+    h = head('📣 今日宣传', `开门前选一个，当天有效。客人多了记得备足原料、安排好人手　余额 💰${fmt(S.coins)}`);
+    for (const c of CAMPAIGNS) {
+      const lock = S.level < c.lv, cost = G.campCost(c), on = cp && cp.id === c.id;
+      h += `<div class="row${lock ? ' lock' : ''}${on ? ' next' : ''}"><div class="e">${c.emo}</div><div class="m"><b>${c.name}</b><small>${c.desc}${lock ? `<br>Lv.${c.lv} 解锁` : ''}</small></div>${on ? '<span class="btn done">进行中</span>' : lock ? '<span class="btn no">🔒</span>' : cp ? '<span class="btn no">今天已选</span>' : buyBtn(`camp:${c.id}`, cost, '开始')}</div>`;
+    }
+    h += '<p class="sub">💡 店里接待不过来时，客人多了反而会流失。人手不够的日子，可以选「会员日」这种不加客流的活动。</p>';
+  } else if (sheetName === 'lab') {
+    const all = G.secrets(), un = [...G.unlocked()];
+    h = head('🧪 新品实验室', `选 2~7 种原料试做一杯，配对成功就能上架隐藏配方。每次试做 💰${fmt(G.labCost())}　余额 💰${fmt(S.coins)}`);
+    h += `<div class="lab">${SEQ.filter((i) => un.includes(i)).map((i) => `<button class="lc${labSel.has(i) ? ' on' : ''}" data-a="lsel:${i}"><span>${ING[i].emo}</span>${ING[i].name}</button>`).join('')}</div>`;
+    h += `<div class="labcup">${labSel.size ? SEQ.filter((i) => labSel.has(i)).map((i) => chip(i)).join('') : '<small>点上面的原料放进杯子</small>'}</div>`;
+    h += `<div style="display:flex;gap:8px;margin:6px 0 4px"><button class="btn g" style="flex:0 0 auto" data-a="lclear">清空</button><button class="btn${labSel.size < 2 || S.coins < G.labCost() ? ' no' : ''}" style="flex:1" data-a="labtry">🧪 试做这一杯<small>💰${fmt(G.labCost())}</small></button></div>`;
+    if (R.labMsg) h += `<p class="sub tipbox">${R.labMsg}</p>`;
+    h += '<h3>配方线索</h3>';
+    all.forEach((r, i) => {
+      const got = S.lab[r.id], lock = r.lv > S.level;
+      h += `<div class="row${lock ? ' lock' : ''}${got ? ' next' : ''}"><div class="e">${got ? '🧋' : lock ? '🔒' : '❓'}</div><div class="m"><b>#${i + 1} ${got ? r.name : lock ? `Lv.${r.lv} 解锁线索` : '神秘配方'}</b><small>${got ? `${sorted(r.items).map((x) => ING[x].emo).join(' ')}　售价 💰${G.price(r)}` : lock ? '等级够了才能研究' : `线索：${r.hint}`}</small></div></div>`;
+    });
   } else if (sheetName === 'tasks') {
     h = head('🎯 目标与图鉴', `完成目标立刻获得奖励 · 当前店面「${G.rank()}」`);
-    h += `<div class="seg">${[['goal', '今日目标'], ['pal', '常客'], ['ach', `成就 ${Object.keys(S.ach).length}/${ACHS.length}`]].map(([k, n]) => `<button class="${taskTab === k ? 'on' : ''}" data-a="ttab:${k}">${n}</button>`).join('')}</div>`;
+    h += `<div class="seg">${[['goal', '目标'], ['rank', '排行'], ['pal', '常客'], ['ach', `成就 ${Object.keys(S.ach).length}/${ACHS.length}`]].map(([k, n]) => `<button class="${taskTab === k ? 'on' : ''}" data-a="ttab:${k}">${n}</button>`).join('')}</div>`;
     if (taskTab === 'goal') {
       for (const g of R.goals) h += `<div class="row"><div class="e">${g.done ? '✅' : '🎯'}</div><div class="m"><b>${g.text(g.target)}</b><small>进度 ${Math.min(g.target, Math.floor(R.today[g.type]))}/${g.target}</small></div><span class="btn ${g.done ? 'done' : 'g'}">💰${g.reward}</span></div>`;
       const hot = RECIPES.find((r) => r.id === R.hot);
       if (hot) h += `<div class="row next"><div class="e">🔥</div><div class="m"><b>今日爆款：${hot.name}</b><small>今天售价 ×1.5（💰${G.price(hot)}），点的人也更多，记得多备点料</small></div></div>`;
       h += `<h3>生涯</h3><div class="grid2"><div class="cell">单日最高收入<b>${fmt(S.stats.bestDay || 0)}</b></div><div class="cell">单日最多出杯<b>${S.stats.bestServed || 0}</b></div><div class="cell">累计出杯<b>${fmt(S.stats.served)}</b></div><div class="cell">累计收入<b>${fmt(S.stats.earned)}</b></div><div class="cell">最高连击<b>${S.stats.bestCombo}</b></div><div class="cell">服务贵宾<b>${S.stats.vip}</b></div><div class="cell">狂热时刻<b>${S.stats.fever || 0}</b></div><div class="cell">外卖单<b>${S.stats.rider || 0}</b></div></div>`;
+    } else if (taskTab === 'rank') {
+      G.rankWeek();
+      const rk = S.rank, live = R.today && (R.phase === 'open' || R.phase === 'closing') ? R.today.income + R.today.tips : 0, me = rk.score + live;
+      const left = 7 - ((S.day - 1) % 7);
+      const list = [...RIVALS.map((r, i) => ({ emo: r.emo, name: r.name, v: rk.riv[i] })), { emo: '🧋', name: '啵啵奶茶铺（你）', v: me, me: 1 }].sort((a, b) => b.v - a.v);
+      h += `<p class="sub">第 ${rk.w} 届街区奶茶榜：比一比这一周的营业额（含小费）。第 ${rk.w * 7} 天（周末集市）打烊时结算${rk.done ? '，本届已结算' : `，还剩 ${left} 天`}。</p>`;
+      list.forEach((x, i) => { h += `<div class="row${x.me ? ' next' : ''}"><div class="e">${['🥇', '🥈', '🥉'][i] || i + 1}</div><div class="m"><b>${x.emo} ${x.name}</b><small>本周 💰${fmt(x.v)}</small></div>${x.me ? `<span class="btn g">奖励 ${Math.round(RANK_PRIZE[i] * 100)}%</span>` : ''}</div>`; });
+      h += `<p class="sub">名次奖励 = 本周营业额 × ${RANK_PRIZE.map((p) => Math.round(p * 100) + '%').join(' / ')}，第 1 名口碑额外 +0.15。对手会跟着你的成绩一起进步哦。${rk.best ? `　历史最好：第 ${rk.best} 名` : ''}</p>`;
     } else if (taskTab === 'pal') {
       h += '<p class="sub">常客只喝自己最爱的那一款。每次完美出杯 +1 好感，每升一颗 ♥：一份谢礼、魅力 +1、付款再多 10%。</p>';
       for (const p of PALS) {
@@ -291,7 +335,9 @@ function renderSheet(keep) {
         · 店里排满时客人会改下线上外卖单，空闲店员做好放进 🛵 外卖柜<br>
         · 第 5 天起设备偶尔会出故障，要老板亲自走过去修<br>
         · 客人看到有人在做自己的单，耐心掉得更慢；排队太久的客人耐心更少<br>
-        · 每 7 天一次 🎪 周末集市：客人更多、小费更高<br>
+        · 每 7 天一次 🎪 周末集市：客人更多、小费更高，同时结算 🏆 街区排行榜<br>
+        · 开门前可以选 📣 宣传活动；Lv.7 起在「配方 → 🧪 新品实验室」照线索研发隐藏配方<br>
+        · 每位奶茶师有自己的特长，出杯越多等级越高，在「升级 → 店员」查看<br>
         · 听不到声音？检查 iPhone 侧边的静音开关</small></div></div>
       <div class="row"><div class="m"><b>📱 添加到主屏幕</b><small>Safari 底部「分享」→「添加到主屏幕」，即可像 App 一样全屏游玩</small></div></div>
       <div class="row"><div class="m"><b>🗑️ 重新开始</b><small>清空存档，从第 1 天重来</small></div><button class="btn g" data-a="reset">清空存档</button></div>`;
@@ -304,6 +350,9 @@ function renderSheet(keep) {
     } else h += `<p class="sub center">招牌越来越响！升级奖励 💰${d.bonus}</p>`;
     for (const s of d.skills || []) h += `<div class="row next"><div class="e">${s.emo}</div><div class="m"><b>新技能：${s.name}</b><small>${s.desc}（营业时点订单下方的圆按钮，冷却 ${s.cd} 秒）</small></div></div>`;
     for (const p of d.pals || []) h += `<div class="row"><div class="e">${p.emo}</div><div class="m"><b>新常客：${p.name}</b><small>听说了你的店，以后会常来。“${p.say}”</small></div></div>`;
+    for (const c of d.camps || []) h += `<div class="row next"><div class="e">${c.emo}</div><div class="m"><b>新宣传活动：${c.name}</b><small>${c.desc}（开门前点「今日宣传」）</small></div></div>`;
+    if (d.lab) h += '<div class="row next"><div class="e">🧪</div><div class="m"><b>新品实验室开放！</b><small>在「配方」里照着线索搭配原料，研发隐藏配方</small></div></div>';
+    if (d.secrets) h += `<div class="row"><div class="e">❓</div><div class="m"><b>实验室出现 ${d.secrets} 条新线索</b><small>去「配方 → 新品实验室」看看</small></div></div>`;
     h += '<button class="btn big" data-a="close">太棒了！</button>';
   } else if (sheetName === 'summary') {
     const d = sheetData;
@@ -314,6 +363,8 @@ function renderSheet(keep) {
       <div class="grid2"><div class="cell">营业额<b>💰${fmt(d.income)}</b></div><div class="cell">小费<b>💰${fmt(d.tips)}</b></div><div class="cell">进货 + 工资<b>💰${fmt(d.cost + d.wages)}</b></div>${d.branch || d.staff ? `<div class="cell">分店分红<b>💰${fmt(d.branch)}</b></div><div class="cell">店员出杯<b>${d.staff}${d.online ? `<small style="font-size:11px;color:var(--ink2)"> 含外卖 ${d.online}</small>` : ""}</b></div>` : ''}<div class="cell">今日净赚<b style="color:${d.profit >= 0 ? '#2f9b62' : '#ff6b7d'}">💰${fmt(d.profit)}</b></div>
       <div class="cell">出杯 / 流失<b>${d.served} / ${d.lost}</b></div><div class="cell">连击 / 狂热<b>${d.bestCombo} / ${d.fever || 0}</b></div></div>
       <p class="sub center" style="margin-top:10px">🎯 完成目标 ${d.goals}/3${d.wasted ? `　·　隔夜的 ${d.wasted} 份茶和珍珠已倒掉` : ''}</p>
+      ${d.rank ? `<div class="rankres"><b>${['🥇', '🥈', '🥉'][d.rank.pos - 1] || '🏅'} 第 ${d.rank.w} 届街区奶茶榜：第 ${d.rank.pos} 名</b><small>本周营业额 💰${fmt(d.rank.score)}　名次奖励 +💰${fmt(d.rank.prize)}${d.rank.pos === 1 ? '　口碑 +0.15' : ''}</small></div>` : ''}
+      ${d.reviews && d.reviews.length ? `<h3>今日点评</h3>${d.reviews.map((r) => `<div class="rv"><span class="ra">${r.emo}</span><div><b>${r.who} <i>${'★'.repeat(r.s)}<em>${'★'.repeat(5 - r.s)}</em></i></b><small>${r.text}</small></div></div>`).join('')}` : ''}
       <button class="btn big" data-a="close">☀️ 准备第 ${S.day} 天</button>`;
   }
   body.innerHTML = h; body.scrollTop = keep ? sc : 0;
